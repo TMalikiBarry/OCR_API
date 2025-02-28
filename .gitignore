@@ -1,0 +1,16 @@
+# Ignorer tout par défaut
+*
+
+# Ne PAS ignorer ces fichiers :
+!.gitignore
+!requirements.txt
+!app.py
+
+# Si tu veux garder un dossier (ex: scripts/)
+# !scripts/
+
+# Ignorer le dossier de l'environnement virtuel (venv)
+venv/
+# Ignorer cache Python
+__pycache__/
+*.pyc

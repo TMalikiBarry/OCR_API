@@ -1,0 +1,7 @@
+flask
+flask-cors
+easyocr
+opencv-python-headless
+pillow
+gunicorn  # Nécessaire pour exécuter l'API sur Cloud Run
+rapidfuzz
