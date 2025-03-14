@@ -1,16 +1,53 @@
-# Ignorer tout par défaut
-*
+# # # Ignorer tout par défaut
+# # *
+
+# # # Ne PAS ignorer ces fichiers :
+# # !.gitignore
+# # !requirements.txt
+# # !app.py
+
+# # Si tu veux garder un dossier (ex: scripts/)
+# # !scripts/
+
+# # Ignorer le dossier de l'environnement virtuel (venv)
+# venv/
+# # Ignorer cache Python
+# __pycache__/
+# *.pyc
+
+
+# Exclure l'environnement virtuel
+venv/
+
+# Exclure les fichiers de cache Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Exclure les fichiers de logs et de debug
+*.log
+logs/
+debug.log
+
+# Exclure les fichiers temporaires
+*.swp
+*.swo
+*.tmp
+
+# Exclure les fichiers et dossiers de Git
+.git/
+.gitignore
+
+# Exclure les fichiers de dépendances locales
+node_modules/
+.env
+.DS_Store
+Thumbs.db
 
 # Ne PAS ignorer ces fichiers :
 !.gitignore
 !requirements.txt
 !app.py
-
-# Si tu veux garder un dossier (ex: scripts/)
-# !scripts/
-
-# Ignorer le dossier de l'environnement virtuel (venv)
-venv/
-# Ignorer cache Python
-__pycache__/
-*.pyc
+!Dockerfile
+!.dockerignore
