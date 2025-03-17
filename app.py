@@ -13,6 +13,18 @@ from flask import Flask, request, jsonify
 ########################################################
 app = Flask(__name__)
 
+########################################################
+# Clés d'authentification
+########################################################
+MYTOUCHPOINT_KEYS = {
+    "5D13989CABA5EDF241031D8006E29949BAECD065768C29F557B74681FAE31A6DECC31698FC313985A1D9D8CAF27D362676ABCD843022CCF709F918C1B58A4CF8",
+    "6E8283286DFC864454F4FCD9738FBE644982FAAB3B2F98B79D11BDDF4129AC0172FC103D8B0C6E0AB023BF85803C6BE00BE80DB27F7DE9BD36E7125CCA637119"
+}
+
+PUBLIC_KEYS = {
+    "C3835FDAC10F61B49E27619F7618BDC7A12BEA581A717240FE775FA93B3A928D456374ACB73044F0ED6B79F220DA0D79EA23082D39477D1923BB5B360E8DD56A"
+}
+
 print("🔄 Initialisation d'EasyOCR...")
 reader = easyocr.Reader(['fr'], gpu=torch.cuda.is_available())
 print("✅ EasyOCR chargé !")
@@ -28,8 +40,9 @@ FULLNAME_TITULAIRE_PATTERN = r"^(?:M\.[A-Z]*\s?[A-Z]+(?:\s[A-Z]+)+|[A-Z]+(?:\s[A
 CYLINDREE_PATTERN = r"^\d{2,7}\s*cm3$"
 
 ########################################################
-# Fonctions Utilitaires
+# Fonctions Utilitaires & auth
 ########################################################
+
 def fuzzy_match(word: str, target: str, threshold=70):
     """
     Compare deux chaînes en minuscule via rapidfuzz et renvoie True si score >= threshold.
@@ -67,6 +80,27 @@ def extract_text_with_ocr(file_storage, tolerance=0.35):
     results = reader.readtext(content)  # detail=1 => [ ([x1,y1],[x2,y2]...), 'texte', conf ]
     extracted_text = [res[1] for res in results if res[2] > tolerance]
     return extracted_text
+
+
+def check_auth():
+    """
+    Vérifie la présence du paramètre 'secret-key' en query string.
+    Détermine le rôle : 'mytouchpoint' ou 'public'.
+    Retourne (role, None) si OK, ou (None, (json, code)) si erreur.
+    """
+    secret_key = request.args.get('secret-key')
+    if not secret_key:
+        return None, (jsonify({"error": "Paramètre 'secret-key' manquant"}), 403)
+
+    # Déterminer le rôle
+    if secret_key in MYTOUCHPOINT_KEYS:
+        return "mytouchpoint", None
+    elif secret_key in PUBLIC_KEYS:
+        return "public", None
+    else:
+        return None, (jsonify({"error": "Clé secrète invalide ou non autorisée"}), 403)
+
+
 
 ########################################################
 # Détection du type de document (recto/verso)
@@ -193,11 +227,20 @@ def parse_cgr_verso_text(extracted_text):
 
     return data
 
+
 ########################################################
 # 1) /extract-text : renvoie texte brut
 ########################################################
 @app.route('/extract-text', methods=['POST'])
 def endpoint_extract_text():
+
+    """
+    Accessible aux deux rôles (mytouchpoint, public).
+    """
+    role, auth_error = check_auth()
+    if auth_error:
+        return auth_error  # (json, code)
+
     """
     Retourne la liste de mots extraits de l'image (texte brut).
     Paramètre 'tolerance' (float) en query string (ex: ?tolerance=0.4).
@@ -214,6 +257,18 @@ def endpoint_extract_text():
 ########################################################
 @app.route('/extract-recto', methods=['POST'])
 def endpoint_extract_recto():
+
+     """
+    Accessible uniquement à mytouchpoint.
+    """
+    role, auth_error = check_auth()
+    if auth_error:
+        return auth_error
+
+    if role != "mytouchpoint":
+        return jsonify({"error": "Accès refusé. Endpoint réservé à MyTouchpoint."}), 403
+
+
     """
     Extrait les infos du recto (date, immatriculation, titulaire, etc.).
     Si l'image semble être un verso, on met un 'warning' dans la réponse.
@@ -246,6 +301,18 @@ def endpoint_extract_recto():
 ########################################################
 @app.route('/extract-verso', methods=['POST'])
 def endpoint_extract_verso():
+
+    """
+    Accessible uniquement à mytouchpoint.
+    """
+    role, auth_error = check_auth()
+    if auth_error:
+        return auth_error
+
+    if role != "mytouchpoint":
+        return jsonify({"error": "Accès refusé. Endpoint réservé à MyTouchpoint."}), 403
+
+
     """
     Extrait les infos du verso (energie, puissance, vin, marque, cylindree).
     Si l'image semble être un recto, on met un 'warning' dans la réponse.
@@ -279,7 +346,17 @@ def endpoint_extract_cgr():
     """
     Reçoit deux images : image_recto, image_verso
     Retourne un JSON unifié avec les champs recto + verso.
+    Accessible uniquement à mytouchpoint.
     """
+    role, auth_error = check_auth()
+    if auth_error:
+        return auth_error
+
+    if role != "mytouchpoint":
+        return jsonify({"error": "Accès refusé. Endpoint réservé à MyTouchpoint."}), 403
+
+        
+
     if 'image_recto' not in request.files or 'image_verso' not in request.files:
         return jsonify({"error": "Deux images (recto, verso) doivent être fournies"}), 400
 
