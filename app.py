@@ -1,18 +1,22 @@
-import os
+import io
 import re
 import cv2
-import numpy as np
+import math
 import easyocr
+import numpy as np
+from PIL import Image
 from flask import Flask, request, jsonify
 from rapidfuzz import fuzz
+import torch
 
 app = Flask(__name__)
 
 print("🔄 Initialisation d'EasyOCR...")
-reader = easyocr.Reader(['fr'], gpu=False)  # Charger le modèle une seule fois
+# Détection auto du GPU si dispo
+reader = easyocr.Reader(['fr'], gpu=torch.cuda.is_available())
 print("✅ EasyOCR chargé !")
 
-# REGEX
+# -------------------- REGEX & Listes --------------------
 IMMATRICULATION_PATTERN = r"[A-Z]{2}-\d{3}-[A-Z]{2}"  # Format AA-171-TX
 DATE_PATTERN = r"\d{2}/\d{2}/\d{4}"                  # Format 13/09/2024
 NUM_TITULAIRE_PATTERN = r"\b\d{9,12}\b"
@@ -20,12 +24,10 @@ FULLNAME_TITULAIRE_PATTERN = r"^(?:M\.[A-Z]*\s?[A-Z]+(?:\s[A-Z]+)+|[A-Z]+(?:\s[A
 CYLINDREE_PATTERN = r"^\d{2,7}\s*cm3$"
 ENERGIES = ["essence", "diesel", "électrique", "electrique", "hybride", "hydrogène"]
 
-# ---------------------------------------------------------------------------
-# Utils
-# ---------------------------------------------------------------------------
-
+# -------------------- Fonctions Utilitaires --------------------
 def fuzzy_match(word, target, threshold=78):
     score = fuzz.ratio(word.lower(), target.lower())
+    # Debug si besoin:
     # print(f"Fuzzy match: '{word}' vs '{target}' => {score}")
     return score >= threshold
 
@@ -34,6 +36,7 @@ def parse_titulaire(full_name: str):
     Retire le préfixe M. ou M.I s'il existe, puis sépare en (nom, prénom).
     """
     prefix_pattern = r"^M\.I?(?!\.)\s*"
+    import re
     name_part = re.sub(prefix_pattern, "", full_name.strip(), flags=re.IGNORECASE)
     splitted = name_part.strip().split()
     if len(splitted) == 0:
@@ -43,33 +46,39 @@ def parse_titulaire(full_name: str):
     else:
         return splitted[0], " ".join(splitted[1:])
 
-def read_image_from_request(key: str):
+def downscale_image_if_needed(pil_image, max_size=1080):
     """
-    Lit l'image depuis request.files[key] et la convertit en objet OpenCV (BGR).
-    Retourne None si l'image n'est pas décodable.
+    Réduit la taille de l'image (PIL) si la dimension la plus grande > max_size.
     """
-    if key not in request.files:
-        return None
-    file = request.files[key]
-    if not file or file.filename == '':
-        return None
+    w, h = pil_image.size
+    if max(w, h) > max_size:
+        ratio = max_size / float(max(w, h))
+        new_w = int(w * ratio)
+        new_h = int(h * ratio)
+        pil_image = pil_image.resize((new_w, new_h), Image.LANCZOS)
+    return pil_image
 
-    image = cv2.imdecode(np.frombuffer(file.read(), np.uint8), cv2.IMREAD_COLOR)
-    return image
+def extract_text_with_ocr(image_file, tolerance=0.35):
+    """
+    Lit le fichier image (FileStorage), le convertit en PIL, downscale si besoin,
+    puis utilise EasyOCR pour extraire le texte (avec un seuil 'tolerance').
+    Retourne la liste des mots.
+    """
+    pil_image = Image.open(image_file)
+    pil_image = downscale_image_if_needed(pil_image, max_size=1080)
 
-def extract_text_with_ocr(image, tolerance=0.35):
-    """
-    Utilise EasyOCR pour extraire le texte (et la confiance).
-    Retourne une liste de mots filtrés par 'tolerance'.
-    """
-    results = reader.readtext(image)
+    # Convertir PIL -> bytes pour EasyOCR
+    img_bytes = io.BytesIO()
+    pil_image.save(img_bytes, format='PNG')
+    content = img_bytes.getvalue()
+
+    # Extraire le texte
+    results = reader.readtext(content)  # detail=1 => [ [ [x1,y1],[x2,y2],[x3,y3],[x4,y4] ], text, conf ]
+    # Filtrer par conf > tolerance
     extracted_text = [res[1] for res in results if res[2] > tolerance]
     return extracted_text
 
-# ---------------------------------------------------------------------------
-# Recto / Verso Logic
-# ---------------------------------------------------------------------------
-
+# -------------------- Logiques Recto / Verso --------------------
 def parse_cgr_recto_text(extracted_text):
     """
     Analyse la liste de mots (recto) et renvoie un dict
@@ -90,16 +99,16 @@ def parse_cgr_recto_text(extracted_text):
         if re.match(IMMATRICULATION_PATTERN, word):
             data["numero_immatriculation"] = word
 
-        # Date
+        # Date (fuzzy "Date Immatriculation")
         if fuzzy_match(word, "Date Immatriculation"):
-            for offset in [1, 2, 3, 4]:
+            for offset in [1,2,3,4]:
                 idx = i + offset
                 if idx < len(extracted_text) and re.match(DATE_PATTERN, extracted_text[idx]):
                     data["date_mise_en_circulation"] = extracted_text[idx]
                     break
 
         # Titulaire
-        if re.fullmatch(FULLNAME_TITULAIRE_PATTERN, word) and i in range(6, 16):
+        if re.fullmatch(FULLNAME_TITULAIRE_PATTERN, word) and i in range(6,16):
             data["titulaire"] = word
             data["nom"], data["prenom"] = parse_titulaire(word)
 
@@ -133,7 +142,7 @@ def parse_cgr_verso_text(extracted_text):
     for i, word in enumerate(extracted_text):
         wlower = word.lower()
 
-        # Energie (fuzzy)
+        # Energie
         for eng in ENERGIES:
             if fuzzy_match(wlower, eng, 70):
                 data["energie"] = word
@@ -142,7 +151,7 @@ def parse_cgr_verso_text(extracted_text):
         if re.match(r"^(\d+)\s?CV$", word):
             data["puissance"] = word
 
-        # VIN
+        # VIN : 17 caractères
         if re.match(r"^[A-Z0-9]{17}$", word.upper()):
             data["vin"] = word
 
@@ -159,46 +168,69 @@ def parse_cgr_verso_text(extracted_text):
 
     return data
 
-# ---------------------------------------------------------------------------
-# Nouveau endpoint unifié
-# ---------------------------------------------------------------------------
+# -------------------- Endpoints --------------------
+
+@app.route('/extract-text', methods=['POST'])
+def endpoint_extract_text():
+    """
+    Retourne la liste de mots extraits de l'image (une seule image).
+    Paramètre 'tolerance' en query string (ex: ?tolerance=0.4).
+    """
+    if 'image' not in request.files:
+        return jsonify({"error": "Aucune image fournie"}), 400
+
+    tolerance = request.args.get('tolerance', default=0.35, type=float)
+    extracted_text = extract_text_with_ocr(request.files['image'], tolerance)
+    return jsonify({"text": extracted_text})
+
+@app.route('/extract-recto', methods=['POST'])
+def endpoint_extract_recto():
+    """
+    Extrait les infos du recto (date, immatriculation, titulaire, etc.) depuis une seule image.
+    """
+    if 'image' not in request.files:
+        return jsonify({"error": "Aucune image fournie"}), 400
+
+    tolerance = request.args.get('tolerance', default=0.35, type=float)
+    extracted_text = extract_text_with_ocr(request.files['image'], tolerance)
+    recto_data = parse_cgr_recto_text(extracted_text)
+    return jsonify(recto_data)
+
+@app.route('/extract-verso', methods=['POST'])
+def endpoint_extract_verso():
+    """
+    Extrait les infos du verso (energie, puissance, vin, marque, cylindree) depuis une seule image.
+    """
+    if 'image' not in request.files:
+        return jsonify({"error": "Aucune image fournie"}), 400
+
+    tolerance = request.args.get('tolerance', default=0.35, type=float)
+    extracted_text = extract_text_with_ocr(request.files['image'], tolerance)
+    verso_data = parse_cgr_verso_text(extracted_text)
+    return jsonify(verso_data)
 
 @app.route('/extract-cgr', methods=['POST'])
-def extract_cgr():
+def endpoint_extract_cgr():
     """
     Reçoit deux images : image_recto, image_verso
     Retourne un JSON unifié avec les champs recto + verso.
-    Si deux images ne sont pas fournies, renvoie une erreur JSON.
     """
-    # Vérifier la présence des deux fichiers
-    img_recto = read_image_from_request('image_recto')
-    img_verso = read_image_from_request('image_verso')
-
-    if not img_recto or not img_verso:
+    if 'image_recto' not in request.files or 'image_verso' not in request.files:
         return jsonify({"error": "Deux images (recto, verso) doivent être fournies"}), 400
 
-    # Paramètre de tolérance (optionnel)
     tolerance = request.args.get('tolerance', default=0.35, type=float)
 
-    # Extraire le texte
-    recto_text = extract_text_with_ocr(img_recto, tolerance)
-    verso_text = extract_text_with_ocr(img_verso, tolerance)
-
-    # Analyser recto/verso
+    # Recto
+    recto_text = extract_text_with_ocr(request.files['image_recto'], tolerance)
     recto_data = parse_cgr_recto_text(recto_text)
+
+    # Verso
+    verso_text = extract_text_with_ocr(request.files['image_verso'], tolerance)
     verso_data = parse_cgr_verso_text(verso_text)
 
-    # Fusionner les données dans un seul JSON
-    # S'il n'y a pas de collision de clés, c'est facile
+    # Fusion
     merged_data = {**recto_data, **verso_data}
-
     return jsonify(merged_data)
 
-
-# Endpoint de test ou endpoints existants...
-# /extract-text, /extract-text-lines, etc.
-
-
 if __name__ == '__main__':
-    # Pour la production: utiliser gunicorn ou un autre WSGI server
     app.run(host='0.0.0.0', port=9000, debug=True)
