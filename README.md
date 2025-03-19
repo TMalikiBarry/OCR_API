@@ -45,9 +45,10 @@ Pour accéder aux endpoints, ajoutez le paramètre `secret-key` dans l'URL.
 
 #### Exemple cURL :
 
-> curl -X POST "http://localhost:9000/extract-text?secret-key=VOTRE_CLE_SECRETE&tolerance=0.35" \
-> -F "image=@/chemin/vers/image.png"
-
+```bash
+ curl -X POST "http://localhost:9000/extract-text?secret-key=VOTRE_CLE_SECRETE&tolerance=0.35" \
+   -F "image=@/chemin/vers/image.png"
+```
 ## 2️⃣ */extract-recto* (🔒 MyTouchpoint uniquement )
 
 **Description** : Extrait les informations du recto du document (ex : date de mise en circulation, numéro
@@ -65,9 +66,10 @@ d'immatriculation, titulaire, nom, prénom, numéro titulaire, adresse commune).
 
 #### Exemple cURL :
 
-> curl -X POST "http://localhost:9000/extract-recto?secret-key=VOTRE_CLE_SECRETE&tolerance=0.35" \
->> -F "image=@/chemin/vers/recto.png"
-
+```
+ curl -X POST "http://localhost:9000/extract-recto?secret-key=VOTRE_CLE_SECRETE&tolerance=0.35" \
+   -F "image=@/chemin/vers/recto.png"
+```
 ## 3️⃣ */extract-verso* (🔒 MyTouchpoint uniquement)
 
 **Description** : Extrait les informations du verso du document (ex : énergie, puissance, VIN, marque, cylindrée).
@@ -84,8 +86,10 @@ d'immatriculation, titulaire, nom, prénom, numéro titulaire, adresse commune).
 
 #### Exemple cURL :
 
-> curl -X POST "http://localhost:9000/extract-verso?secret-key=VOTRE_CLE_SECRETE&tolerance=0.35" \
->> -F "image=@/chemin/vers/verso.png"
+``` bash
+ curl -X POST "http://localhost:9000/extract-verso?secret-key=VOTRE_CLE_SECRETE&tolerance=0.35" \
+  -F "image=@/chemin/vers/verso.png"
+```
 
 ## 4️⃣ */extract-cgr* (🔒 MyTouchpoint uniquement)
 
@@ -102,9 +106,11 @@ chacune.
 
 #### Exemple cURL :
 
-> curl -X POST "http://localhost:9000/extract-cgr?secret-key=VOTRE_CLE_SECRETE&tolerance=0.35" \
->> -F "image_recto=@/chemin/vers/recto.png" \
-> > -F "image_verso=@/chemin/vers/verso.png"
+```
+ curl -X POST "http://localhost:9000/extract-cgr?secret-key=VOTRE_CLE_SECRETE&tolerance=0.35" \
+  -F "image_recto=@/chemin/vers/recto.png" \
+  -F "image_verso=@/chemin/vers/verso.png"
+```
 
 ## 🔧 Remarques Techniques
 
