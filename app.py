@@ -1,10 +1,9 @@
 import io
 import re
-import math
-import torch
-import rapidfuzz
+
 import easyocr
-import numpy as np
+import rapidfuzz
+import torch
 from PIL import Image
 from flask import Flask, request, jsonify
 
@@ -34,10 +33,11 @@ print("✅ EasyOCR chargé !")
 ########################################################
 ENERGIES = ["essence", "diesel", "électrique", "electrique", "hybride", "hydrogène"]
 IMMATRICULATION_PATTERN = r"^[A-Z]{2}[-.\s]?\d{2,4}[-.\s]?[A-Z]{1,3}$"  # AA-171-TX
-DATE_PATTERN = r"\d{2}/\d{2}/\d{4}"                   # 13/09/2024
+DATE_PATTERN = r"\d{2}/\d{2}/\d{4}"  # 13/09/2024
 NUM_TITULAIRE_PATTERN = r"\b\d{9,12}\b"
 FULLNAME_TITULAIRE_PATTERN = r"^(?:M\.[A-Z]*\s?[A-Z]+(?:\s[A-Z]+)+|[A-Z]+(?:\s[A-Z]+)+)$"
 CYLINDREE_PATTERN = r"^\d{2,7}\s*cm3$"
+
 
 ########################################################
 # Fonctions Utilitaires & auth
@@ -50,6 +50,7 @@ def fuzzy_match(word: str, target: str, threshold=70):
     score = rapidfuzz.fuzz.ratio(word.lower(), target.lower())
     return score >= threshold
 
+
 def downscale_image_if_needed(pil_image: Image.Image, max_size=1080):
     """
     Réduit la taille de l'image (PIL) si la dimension la plus grande > max_size.
@@ -61,6 +62,7 @@ def downscale_image_if_needed(pil_image: Image.Image, max_size=1080):
         new_h = int(h * ratio)
         pil_image = pil_image.resize((new_w, new_h), Image.LANCZOS)
     return pil_image
+
 
 def extract_text_with_ocr(file_storage, tolerance=0.35):
     """
@@ -101,7 +103,6 @@ def check_auth():
         return None, (jsonify({"error": "Clé secrète invalide ou non autorisée"}), 403)
 
 
-
 ########################################################
 # Détection du type de document (recto/verso)
 ########################################################
@@ -139,6 +140,7 @@ def detect_document_type(extracted_text):
         return "verso"
     else:
         return None
+
 
 ########################################################
 # Fonctions de parsing recto / verso
@@ -181,14 +183,17 @@ def parse_cgr_recto_text(extracted_text):
             data["numero_titulaire"] = word
 
         # Adresse commune
-        if (fuzzy_match(word, "adresse commune", 70) or fuzzy_match(word, "adresse", 65) or fuzzy_match(word, "commune", 60)) and i + 2 < len(extracted_text):
-            next_word = extracted_text[i+1]
+        if (fuzzy_match(word, "adresse commune", 70) or fuzzy_match(word, "adresse", 65) or fuzzy_match(word, "commune",
+                                                                                                        60)) and i + 2 < len(
+            extracted_text):
+            next_word = extracted_text[i + 1]
             if len(next_word) >= 7:
                 data["adresse_commune"] = next_word
             else:
-                data["adresse_commune"] = extracted_text[i+2]
+                data["adresse_commune"] = extracted_text[i + 2]
 
     return data
+
 
 def parse_cgr_verso_text(extracted_text):
     data = {
@@ -216,14 +221,14 @@ def parse_cgr_verso_text(extracted_text):
             data["vin"] = word
 
         # Marque
-        if fuzzy_match(wlower, "marque", 65) and i+1 < len(extracted_text):
-            data["marque"] = extracted_text[i+1]
+        if fuzzy_match(wlower, "marque", 65) and i + 1 < len(extracted_text):
+            data["marque"] = extracted_text[i + 1]
 
         # Cylindrée
         if re.match(CYLINDREE_PATTERN, wlower):
             data["cylindree"] = word
-        elif fuzzy_match(wlower, "cylindrée", 80) and i+1 < len(extracted_text):
-            data["cylindree"] = extracted_text[i+1]
+        elif fuzzy_match(wlower, "cylindrée", 80) and i + 1 < len(extracted_text):
+            data["cylindree"] = extracted_text[i + 1]
 
     return data
 
@@ -233,11 +238,12 @@ def parse_cgr_verso_text(extracted_text):
 ########################################################
 @app.route('/extract-text', methods=['POST'])
 def endpoint_extract_text():
-
     """
     Accessible aux deux rôles (mytouchpoint, public).
     """
+
     role, auth_error = check_auth()
+
     if auth_error:
         return auth_error  # (json, code)
 
@@ -252,22 +258,23 @@ def endpoint_extract_text():
     extracted_text = extract_text_with_ocr(request.files['image'], tolerance)
     return jsonify({"text": extracted_text})
 
+
 ########################################################
 # 2) /extract-recto : parse champs recto
 ########################################################
 @app.route('/extract-recto', methods=['POST'])
 def endpoint_extract_recto():
-
-     """
+    """
     Accessible uniquement à mytouchpoint.
     """
+
     role, auth_error = check_auth()
+
     if auth_error:
         return auth_error
 
     if role != "mytouchpoint":
         return jsonify({"error": "Accès refusé. Endpoint réservé à MyTouchpoint."}), 403
-
 
     """
     Extrait les infos du recto (date, immatriculation, titulaire, etc.).
@@ -296,22 +303,23 @@ def endpoint_extract_recto():
 
     return jsonify(recto_data)
 
+
 ########################################################
 # 3) /extract-verso : parse champs verso
 ########################################################
 @app.route('/extract-verso', methods=['POST'])
 def endpoint_extract_verso():
-
     """
     Accessible uniquement à mytouchpoint.
     """
+
     role, auth_error = check_auth()
+
     if auth_error:
         return auth_error
 
     if role != "mytouchpoint":
         return jsonify({"error": "Accès refusé. Endpoint réservé à MyTouchpoint."}), 403
-
 
     """
     Extrait les infos du verso (energie, puissance, vin, marque, cylindree).
@@ -338,6 +346,7 @@ def endpoint_extract_verso():
 
     return jsonify(verso_data)
 
+
 ########################################################
 # 4) /extract-cgr : reçoit deux images recto/verso
 ########################################################
@@ -348,14 +357,14 @@ def endpoint_extract_cgr():
     Retourne un JSON unifié avec les champs recto + verso.
     Accessible uniquement à mytouchpoint.
     """
+
     role, auth_error = check_auth()
+
     if auth_error:
         return auth_error
 
     if role != "mytouchpoint":
         return jsonify({"error": "Accès refusé. Endpoint réservé à MyTouchpoint."}), 403
-
-        
 
     if 'image_recto' not in request.files or 'image_verso' not in request.files:
         return jsonify({"error": "Deux images (recto, verso) doivent être fournies"}), 400
@@ -373,6 +382,7 @@ def endpoint_extract_cgr():
     # Fusion
     merged_data = {**recto_data, **verso_data}
     return jsonify(merged_data)
+
 
 ########################################################
 # Main

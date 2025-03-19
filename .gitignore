@@ -15,6 +15,7 @@
 # __pycache__/
 # *.pyc
 
+.idea/
 
 # Exclure l'environnement virtuel
 venv/
@@ -37,7 +38,6 @@ debug.log
 
 # Exclure les fichiers et dossiers de Git
 .git/
-.gitignore
 
 # Exclure les fichiers de dépendances locales
 node_modules/
