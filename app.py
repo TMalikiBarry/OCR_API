@@ -33,7 +33,7 @@ print("✅ EasyOCR chargé !")
 # Listes & Regex
 ########################################################
 ENERGIES = ["essence", "diesel", "électrique", "electrique", "hybride", "hydrogène"]
-IMMATRICULATION_PATTERN = r"[A-Z]{2}-\d{3}-[A-Z]{2}"  # AA-171-TX
+IMMATRICULATION_PATTERN = r"^[A-Z]{2}[-.\s]?\d{2,4}[-.\s]?[A-Z]{1,3}$"  # AA-171-TX
 DATE_PATTERN = r"\d{2}/\d{2}/\d{4}"                   # 13/09/2024
 NUM_TITULAIRE_PATTERN = r"\b\d{9,12}\b"
 FULLNAME_TITULAIRE_PATTERN = r"^(?:M\.[A-Z]*\s?[A-Z]+(?:\s[A-Z]+)+|[A-Z]+(?:\s[A-Z]+)+)$"
@@ -181,7 +181,7 @@ def parse_cgr_recto_text(extracted_text):
             data["numero_titulaire"] = word
 
         # Adresse commune
-        if (fuzzy_match(word, "adresse commune", 70) or fuzzy_match(word, "adresse", 65)) and i + 2 < len(extracted_text):
+        if (fuzzy_match(word, "adresse commune", 70) or fuzzy_match(word, "adresse", 65) or fuzzy_match(word, "commune", 60)) and i + 2 < len(extracted_text):
             next_word = extracted_text[i+1]
             if len(next_word) >= 7:
                 data["adresse_commune"] = next_word
