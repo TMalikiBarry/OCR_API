@@ -117,10 +117,32 @@ chacune.
 
 ## 🚀 Tester avec Postman
 
-Pour tester l’API avec Postman, utilisez les exemples cURL fournis, ou importez-les directement dans Postman en
-sélectionnant Import > Raw Text > Coller le cURL.
+- **Option 1** : Importer directement les requêtes cURL (Postman > Import > Raw Text).
+- **Option 2** : Créer manuellement une requête ```POST```, ajouter ```secret-key``` en *query string*, puis un champ
+  ```image``` de type *file*.
 
 ## 🛠 Intégration
 
 Vous pouvez facilement intégrer OCR_API dans vos projets en appelant les endpoints via Python, JavaScript, Java, ou tout
 autre langage supportant HTTP.
+
+## 🛠 Déploiement et Configuration
+
+1. **Installation des dépendances** :
+
+```
+pip install -r requirements.txt
+```
+
+2. **Lancement local** :
+
+```
+python app.py
+```
+
+3. **Utilisation de Docker** :
+
+```
+docker build -t easy-ocr-api .
+docker run -p 9000:9000 easy-ocr-api
+```
