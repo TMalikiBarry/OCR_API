@@ -64,7 +64,7 @@ def downscale_image_if_needed(pil_image: Image.Image, max_size=1080):
     return pil_image
 
 
-def extract_text_with_ocr(file_storage, tolerance=0.35):
+def extract_text_with_ocr(file_storage, tolerance=0.2):
     """
     Lit le fichier image (FileStorage), le convertit en PIL, downscale si besoin,
     puis utilise EasyOCR pour extraire le texte (avec un seuil 'tolerance').
@@ -183,14 +183,16 @@ def parse_cgr_recto_text(extracted_text):
             data["numero_titulaire"] = word
 
         # Adresse commune
-        if (fuzzy_match(word, "adresse commune", 70) or fuzzy_match(word, "adresse", 65) or fuzzy_match(word, "commune",
-                                                                                                        60)) and i + 2 < len(
-            extracted_text):
-            next_word = extracted_text[i + 1]
-            if len(next_word) >= 7:
-                data["adresse_commune"] = next_word
-            else:
+        if (fuzzy_match(word, "adresse commune", 70) or fuzzy_match(word, "adresse", 65)
+            or fuzzy_match(word, "commune", 60)) and i + 2 < len(extracted_text):
+
+            # next_word = extracted_text[i + 1]
+            if len(extracted_text[i + 1]) >= 7:
+                data["adresse_commune"] = extracted_text[i + 1]
+            elif len(extracted_text[i + 2]) >= 7:
                 data["adresse_commune"] = extracted_text[i + 2]
+            else:
+                data["adresse_commune"] = extracted_text[i + 3]
 
     return data
 
@@ -254,7 +256,12 @@ def endpoint_extract_text():
     if 'image' not in request.files:
         return jsonify({"error": "Aucune image fournie"}), 400
 
-    tolerance = request.args.get('tolerance', default=0.35, type=float)
+    print("🟢 Requête reçue Extraction Full Text!")
+    print("Headers: ", request.headers)
+    print("Form Data: ", request.form)
+    print("Files: ", request.files)
+
+    tolerance = request.args.get('tolerance', default=0.2, type=float)
     extracted_text = extract_text_with_ocr(request.files['image'], tolerance)
     return jsonify({"text": extracted_text})
 
@@ -283,7 +290,12 @@ def endpoint_extract_recto():
     if 'image' not in request.files:
         return jsonify({"error": "Aucune image fournie"}), 400
 
-    tolerance = request.args.get('tolerance', default=0.35, type=float)
+    print("🟢 Requête reçue Extraction Recto!")
+    print("Headers: ", request.headers)
+    print("Form Data: ", request.form)
+    print("Files: ", request.files)
+
+    tolerance = request.args.get('tolerance', default=0.2, type=float)
     extracted_text = extract_text_with_ocr(request.files['image'], tolerance)
 
     # Détecter le type
@@ -328,7 +340,12 @@ def endpoint_extract_verso():
     if 'image' not in request.files:
         return jsonify({"error": "Aucune image fournie"}), 400
 
-    tolerance = request.args.get('tolerance', default=0.35, type=float)
+    print("🟢 Requête reçue Extraction Verso!")
+    print("Headers: ", request.headers)
+    print("Form Data: ", request.form)
+    print("Files: ", request.files)
+
+    tolerance = request.args.get('tolerance', default=0.2, type=float)
     extracted_text = extract_text_with_ocr(request.files['image'], tolerance)
 
     doc_type = detect_document_type(extracted_text)
@@ -369,7 +386,12 @@ def endpoint_extract_cgr():
     if 'image_recto' not in request.files or 'image_verso' not in request.files:
         return jsonify({"error": "Deux images (recto, verso) doivent être fournies"}), 400
 
-    tolerance = request.args.get('tolerance', default=0.35, type=float)
+    print("🟢 Requête reçue Extraction Verso!")
+    print("Headers: ", request.headers)
+    print("Form Data: ", request.form)
+    print("Files: ", request.files)
+
+    tolerance = request.args.get('tolerance', default=0.2, type=float)
 
     # Recto
     recto_text = extract_text_with_ocr(request.files['image_recto'], tolerance)

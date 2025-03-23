@@ -39,14 +39,14 @@ Pour accéder aux endpoints, ajoutez le paramètre `secret-key` dans l'URL.
 
 - Paramètres :
 
-    - *Query* : ```secret-key```, ```tolerance``` (optionnel, par défaut ```0.35```)
+  - *Query* : ```secret-key```, ```tolerance``` (optionnel, par défaut ```0.2```)
 
     - *Form* : ```image``` (fichier image)
 
 #### Exemple cURL :
 
 ```bash
- curl -X POST "http://localhost:9000/extract-text?secret-key=VOTRE_CLE_SECRETE&tolerance=0.35" \
+ curl -X POST "http://localhost:9000/extract-text?secret-key=VOTRE_CLE_SECRETE&tolerance=0.2" \
    -F "image=@/chemin/vers/image.png"
 ```
 ## 2️⃣ */extract-recto* (🔒 MyTouchpoint uniquement )
@@ -60,14 +60,14 @@ d'immatriculation, titulaire, nom, prénom, numéro titulaire, adresse commune).
 
 - Paramètres :
 
-    - *Query* : ```secret-key```, ```tolerance``` (optionnel, par défaut ```0.35```)
+  - *Query* : ```secret-key```, ```tolerance``` (optionnel, par défaut ```0.2```)
 
     - *Form* : ```image``` (fichier image)
 
 #### Exemple cURL :
 
 ```
- curl -X POST "http://localhost:9000/extract-recto?secret-key=VOTRE_CLE_SECRETE&tolerance=0.35" \
+ curl -X POST "http://localhost:9000/extract-recto?secret-key=VOTRE_CLE_SECRETE&tolerance=0.2" \
    -F "image=@/chemin/vers/recto.png"
 ```
 ## 3️⃣ */extract-verso* (🔒 MyTouchpoint uniquement)
@@ -80,14 +80,14 @@ d'immatriculation, titulaire, nom, prénom, numéro titulaire, adresse commune).
 
 - Paramètres :
 
-    - *Query* : ```secret-key```, ```tolerance``` (optionnel, par défaut ```0.35```)
+  - *Query* : ```secret-key```, ```tolerance``` (optionnel, par défaut ```0.2```)
 
     - *Form* : ```image``` (fichier image)
 
 #### Exemple cURL :
 
 ``` bash
- curl -X POST "http://localhost:9000/extract-verso?secret-key=VOTRE_CLE_SECRETE&tolerance=0.35" \
+ curl -X POST "http://localhost:9000/extract-verso?secret-key=VOTRE_CLE_SECRETE&tolerance=0.2" \
   -F "image=@/chemin/vers/verso.png"
 ```
 
@@ -100,14 +100,14 @@ chacune.
 
 - Paramètres :
 
-    - *Query* : ```secret-key```, ```tolerance``` (optionnel, par défaut ```0.35```)
+  - *Query* : ```secret-key```, ```tolerance``` (optionnel, par défaut ```0.2```)
 
     - *Form* : ```image_recto``` et ```image_verso``` (fichiers images)
 
 #### Exemple cURL :
 
 ```
- curl -X POST "http://localhost:9000/extract-cgr?secret-key=VOTRE_CLE_SECRETE&tolerance=0.35" \
+ curl -X POST "http://localhost:9000/extract-cgr?secret-key=VOTRE_CLE_SECRETE&tolerance=0.2" \
   -F "image_recto=@/chemin/vers/recto.png" \
   -F "image_verso=@/chemin/vers/verso.png"
 ```
