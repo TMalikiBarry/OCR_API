@@ -35,13 +35,67 @@ ENERGIES = ["essence", "diesel", "électrique", "electrique", "hybride", "hydrog
 IMMATRICULATION_PATTERN = r"^[A-Z]{2}[-.\s]?\d{2,4}[-.\s]?[A-Z]{1,3}$"  # AA-171-TX
 DATE_PATTERN = r"\d{2}/\d{2}/\d{4}"  # 13/09/2024
 NUM_TITULAIRE_PATTERN = r"\b\d{9,12}\b"
-FULLNAME_TITULAIRE_PATTERN = r"^(?:M\.[A-Z]*\s?[A-Z]+(?:\s[A-Z]+)+|[A-Z]+(?:\s[A-Z]+)+)$"
+FULLNAME_TITULAIRE_PATTERN = r"^(?:M\.(?:I)?[A-Z]*\s?[A-Z]+(?:\s[A-Z]+)+|(?:I)?[A-Z]+(?:\s[A-Z]+)+)$"
 CYLINDREE_PATTERN = r"^\d{2,7}\s*cm3$"
 
 
 ########################################################
 # Fonctions Utilitaires & auth
 ########################################################
+
+def check_auth_old():
+    """
+    Vérifie la présence du paramètre 'secret-key' en query string.
+    Détermine le rôle : 'mytouchpoint' ou 'public'.
+    Retourne (role, None) si OK, ou (None, (json, code)) si erreur.
+    """
+    secret_key = request.args.get('secret-key')
+    if not secret_key:
+        return None, (jsonify({"error": "Paramètre 'secret-key' manquant"}), 403)
+
+    # Déterminer le rôle
+    if secret_key in MYTOUCHPOINT_KEYS:
+        return "mytouchpoint", None
+    elif secret_key in PUBLIC_KEYS:
+        return "public", None
+    else:
+        return None, (jsonify({"error": "Clé secrète invalide ou non autorisée"}), 403)
+
+
+def check_auth():
+    """
+    Vérifie la présence du paramètre 'secret-key' dans le corps (JSON ou form-data)
+    ou en query string.
+    Détermine le rôle : 'mytouchpoint' ou 'public'.
+    Retourne (role, None) si OK, ou (None, (json, code)) si erreur.
+    """
+    # Vérifier dans le JSON
+    secret_key = None
+    if request.is_json:
+        data = request.get_json(silent=True)
+        if data:
+            secret_key = data.get('secret-key')
+
+    # Sinon, vérifier dans les données du formulaire
+    if not secret_key:
+        secret_key = request.form.get('secret-key')
+
+    # Enfin, vérifier dans les query parameters
+    if not secret_key:
+        secret_key = request.args.get('secret-key')
+
+    # Si la clé est toujours absente, renvoyer une erreur
+    if not secret_key:
+        return None, (jsonify({"error": "Paramètre 'secret-key' manquant"}), 403)
+
+    # Déterminer le rôle
+    if secret_key in MYTOUCHPOINT_KEYS:
+        return "mytouchpoint", None
+    elif secret_key in PUBLIC_KEYS:
+        return "public", None
+    else:
+        return None, (jsonify({"error": "Clé secrète invalide ou non autorisée"}), 403)
+
 
 def fuzzy_match(word: str, target: str, threshold=70):
     """
@@ -60,7 +114,10 @@ def downscale_image_if_needed(pil_image: Image.Image, max_size=1080):
         ratio = max_size / float(max(w, h))
         new_w = int(w * ratio)
         new_h = int(h * ratio)
-        pil_image = pil_image.resize((new_w, new_h), Image.LANCZOS)
+        pil_image = pil_image.resize(
+            (new_w, new_h),
+            resample=Image.Resampling.LANCZOS
+        )
     return pil_image
 
 
@@ -82,25 +139,6 @@ def extract_text_with_ocr(file_storage, tolerance=0.2):
     results = reader.readtext(content)  # detail=1 => [ ([x1,y1],[x2,y2]...), 'texte', conf ]
     extracted_text = [res[1] for res in results if res[2] > tolerance]
     return extracted_text
-
-
-def check_auth():
-    """
-    Vérifie la présence du paramètre 'secret-key' en query string.
-    Détermine le rôle : 'mytouchpoint' ou 'public'.
-    Retourne (role, None) si OK, ou (None, (json, code)) si erreur.
-    """
-    secret_key = request.args.get('secret-key')
-    if not secret_key:
-        return None, (jsonify({"error": "Paramètre 'secret-key' manquant"}), 403)
-
-    # Déterminer le rôle
-    if secret_key in MYTOUCHPOINT_KEYS:
-        return "mytouchpoint", None
-    elif secret_key in PUBLIC_KEYS:
-        return "public", None
-    else:
-        return None, (jsonify({"error": "Clé secrète invalide ou non autorisée"}), 403)
 
 
 ########################################################
@@ -172,6 +210,10 @@ def parse_cgr_recto_text(extracted_text):
         # Titulaire (full name)
         if re.fullmatch(FULLNAME_TITULAIRE_PATTERN, word) and i in range(6, 16):
             data["titulaire"] = word
+
+            # 1) on retire M. ou M.I ou MI ou M au tout début
+            word = re.sub(r'^(?:M\.(?:I)?|MI)', '', word).lstrip()
+
             # Séparer nom/prénom
             splitted = word.split()
             if len(splitted) > 1:
@@ -404,6 +446,14 @@ def endpoint_extract_cgr():
     # Fusion
     merged_data = {**recto_data, **verso_data}
     return jsonify(merged_data)
+
+
+########################################################
+# 0) /test : tester facilement le déploiement
+########################################################
+@app.route('/test', methods=['GET'])
+def isDeploiementOK():
+    return jsonify({"message": "Votre API, EasyOcrAPI, a été déployé avec succès"})
 
 
 ########################################################
