@@ -71,7 +71,7 @@ d'immatriculation, titulaire, nom, prénom, numéro titulaire, adresse commune).
 ```
  curl -X POST "http://localhost:9000/extract-recto?tolerance=0.2" \
    -F "secret-key=VOTRE_CLE_SECRETE" \
-  -F "image=@/chemin/vers/recto.png"
+   -F "image=@/chemin/vers/recto.png"
 ```
 ## 3️⃣ */extract-verso* (🔒 MyTouchpoint uniquement)
 
