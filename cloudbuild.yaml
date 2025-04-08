@@ -1,6 +1,6 @@
 steps:
   - name: 'gcr.io/cloud-builders/docker'
-    args: [ 'build', '-t', 'easy-ocr-api', '.' ]
+    args: [ 'build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/touch-ocr-api-repo/easy-ocr-api', '.' ]
   - name: 'gcr.io/cloud-builders/docker'
     args: [ 'push','us-central1-docker.pkg.dev/$PROJECT_ID/touch-ocr-api-repo/easy-ocr-api' ]
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
