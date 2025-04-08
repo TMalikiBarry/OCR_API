@@ -13,7 +13,7 @@ steps:
         '--region', 'us-central1',
         '--allow-unauthenticated',
         '--cpu', '1',
-        '--memory', '1Gi',
+        '--memory', '8Gi',
         '--concurrency', '2',
         '--max-instances', '2'
       ]
