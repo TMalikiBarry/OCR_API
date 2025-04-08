@@ -17,5 +17,7 @@ steps:
         '--concurrency', '2',
         '--max-instances', '2'
       ]
+options:
+  logging: CLOUD_LOGGING_ONLY
 images:
   - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/easy-ocr-api'
