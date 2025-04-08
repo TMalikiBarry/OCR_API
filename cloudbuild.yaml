@@ -1,0 +1,21 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [ 'build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/easy-ocr-api', '.' ]
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [ 'push', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/easy-ocr-api' ]
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      [
+        'run', 'deploy', 'easy-ocr-api-dev',
+        '--image', 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/easy-ocr-api',
+        '--platform', 'managed',
+        '--region', 'us-central1',
+        '--allow-unauthenticated',
+        '--cpu', '1',
+        '--memory', '1Gi',
+        '--concurrency', '2',
+        '--max-instances', '2'
+      ]
+images:
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/easy-ocr-api'

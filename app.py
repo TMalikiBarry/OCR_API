@@ -212,7 +212,8 @@ def parse_cgr_recto_text(extracted_text):
             data["titulaire"] = word
 
             # 1) on retire M. ou M.I ou MI ou M au tout début
-            word = re.sub(r'^(?:M\.(?:I)?|MI)', '', word).lstrip()
+            # word = re.sub(r'^(?:M\.(?:I)?|MI)', '', word).lstrip()
+            word = re.sub(r'^(?:M\.I?\s?|MI\s?|M\s?)', '', word).lstrip()
 
             # Séparer nom/prénom
             splitted = word.split()
