@@ -1,11 +1,11 @@
-import io
-import re
+from io import BytesIO
+# import re
+from re import sub, match, fullmatch
 
-import easyocr
-import rapidfuzz
-import torch
 from PIL import Image
+from easyocr import Reader
 from flask import Flask, request, jsonify
+from rapidfuzz.fuzz import ratio
 
 ########################################################
 # Configuration Flask & EasyOCR
@@ -24,8 +24,8 @@ PUBLIC_KEYS = {
     "C3835FDAC10F61B49E27619F7618BDC7A12BEA581A717240FE775FA93B3A928D456374ACB73044F0ED6B79F220DA0D79EA23082D39477D1923BB5B360E8DD56A"
 }
 
-print("🔄 Initialisation d'EasyOCR...")
-reader = easyocr.Reader(['fr'], gpu=torch.cuda.is_available())
+print("🔄 Initialisation d'EasyOCR (CPU uniquement)...")
+reader = Reader(['fr'], gpu=False)
 print("✅ EasyOCR chargé !")
 
 ########################################################
@@ -101,7 +101,7 @@ def fuzzy_match(word: str, target: str, threshold=70):
     """
     Compare deux chaînes en minuscule via rapidfuzz et renvoie True si score >= threshold.
     """
-    score = rapidfuzz.fuzz.ratio(word.lower(), target.lower())
+    score = ratio(word.lower(), target.lower())
     return score >= threshold
 
 
@@ -131,7 +131,7 @@ def extract_text_with_ocr(file_storage, tolerance=0.2):
     pil_image = downscale_image_if_needed(pil_image, max_size=1080)
 
     # Convertir PIL -> bytes
-    img_bytes = io.BytesIO()
+    img_bytes = BytesIO()
     pil_image.save(img_bytes, format='PNG')
     content = img_bytes.getvalue()
 
@@ -163,13 +163,13 @@ def detect_document_type(extracted_text):
         if any(fuzzy_match(wlower, kw, 65) for kw in recto_keywords):
             recto_score += 1
         # Immatriculation pattern
-        if re.match(IMMATRICULATION_PATTERN, word):
+        if match(IMMATRICULATION_PATTERN, word):
             recto_score += 1
         # Score verso
         if any(fuzzy_match(wlower, kw, 65) for kw in verso_keywords):
             verso_score += 1
         # VIN
-        if re.match(r"^[A-Z0-9]{17}$", word.upper()):
+        if match(r"^[A-Z0-9]{17}$", word.upper()):
             verso_score += 1
 
     if recto_score > verso_score:
@@ -196,24 +196,24 @@ def parse_cgr_recto_text(extracted_text):
 
     for i, word in enumerate(extracted_text):
         # Immatriculation
-        if re.match(IMMATRICULATION_PATTERN, word):
+        if match(IMMATRICULATION_PATTERN, word):
             data["numero_immatriculation"] = word
 
         # Date (fuzzy 'Date Immatriculation')
         if fuzzy_match(word, "Date Immatriculation", 70):
             for offset in [1, 2, 3, 4]:
                 idx = i + offset
-                if idx < len(extracted_text) and re.match(DATE_PATTERN, extracted_text[idx]):
+                if idx < len(extracted_text) and match(DATE_PATTERN, extracted_text[idx]):
                     data["date_mise_en_circulation"] = extracted_text[idx]
                     break
 
         # Titulaire (full name)
-        if re.fullmatch(FULLNAME_TITULAIRE_PATTERN, word) and i in range(6, 16):
+        if fullmatch(FULLNAME_TITULAIRE_PATTERN, word) and i in range(6, 16):
             data["titulaire"] = word
 
             # 1) on retire M. ou M.I ou MI ou M au tout début
             # word = re.sub(r'^(?:M\.(?:I)?|MI)', '', word).lstrip()
-            word = re.sub(r'^(?:M\.I?\s?|MI\s?|M\s?)', '', word).lstrip()
+            word = sub(r'^(?:M\.I?\s?|MI\s?|M\s?)', '', word).lstrip()
 
             # Séparer nom/prénom
             splitted = word.split()
@@ -222,7 +222,7 @@ def parse_cgr_recto_text(extracted_text):
                 data["prenom"] = " ".join(splitted[1:])
 
         # Numéro titulaire
-        if re.fullmatch(NUM_TITULAIRE_PATTERN, word):
+        if fullmatch(NUM_TITULAIRE_PATTERN, word):
             data["numero_titulaire"] = word
 
         # Adresse commune
@@ -258,11 +258,11 @@ def parse_cgr_verso_text(extracted_text):
                 data["energie"] = word
 
         # Puissance ex: '8 CV'
-        if re.match(r"^(\d+)\s?CV$", word):
+        if match(r"^(\d+)\s?CV$", word):
             data["puissance"] = word
 
         # VIN
-        if re.match(r"^[A-Z0-9]{17}$", word.upper()):
+        if match(r"^[A-Z0-9]{17}$", word.upper()):
             data["vin"] = word
 
         # Marque
@@ -270,7 +270,7 @@ def parse_cgr_verso_text(extracted_text):
             data["marque"] = extracted_text[i + 1]
 
         # Cylindrée
-        if re.match(CYLINDREE_PATTERN, wlower):
+        if match(CYLINDREE_PATTERN, wlower):
             data["cylindree"] = word
         elif fuzzy_match(wlower, "cylindrée", 80) and i + 1 < len(extracted_text):
             data["cylindree"] = extracted_text[i + 1]
@@ -461,4 +461,4 @@ def isDeploiementOK():
 # Main
 ########################################################
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=9000, debug=True)
+    app.run(host='0.0.0.0', port=8080, debug=True)

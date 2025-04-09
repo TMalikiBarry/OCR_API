@@ -39,7 +39,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Exposer le port
-EXPOSE 9000
+EXPOSE 8080
 
 # Lancer via Gunicorn (production)
-CMD ["gunicorn", "-b", "0.0.0.0:9000", "app:app"]
+CMD ["gunicorn", "-b", "0.0.0.0:8080", "app:app"]

@@ -14,7 +14,7 @@ steps:
         '--allow-unauthenticated',
         '--cpu', '2',
         '--memory', '8Gi',
-        '--concurrency', '2',
+        '--concurrency', '5',
         '--max-instances', '2'
       ]
 options:
