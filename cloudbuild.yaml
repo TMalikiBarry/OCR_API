@@ -12,8 +12,8 @@ steps:
         '--platform', 'managed',
         '--region', 'us-central1',
         '--allow-unauthenticated',
-        '--cpu', '2',
-        '--memory', '6Gi',
+        '--cpu', '4',
+        '--memory', '8Gi',
         '--concurrency', '5',
         '--max-instances', '4',
         '--min-instances', '2'
