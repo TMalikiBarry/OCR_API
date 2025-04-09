@@ -12,10 +12,11 @@ steps:
         '--platform', 'managed',
         '--region', 'us-central1',
         '--allow-unauthenticated',
-        '--cpu', '1',
-        '--memory', '4Gi',
+        '--cpu', '2',
+        '--memory', '6Gi',
         '--concurrency', '5',
-        '--max-instances', '2'
+        '--max-instances', '4',
+        '--min-instances', '2'
       ]
 options:
   logging: CLOUD_LOGGING_ONLY
