@@ -2,7 +2,7 @@ from io import BytesIO
 # import re
 from re import sub, match, fullmatch
 
-from PIL import Image
+from PIL.Image import Image, open, Resampling
 from easyocr import Reader
 from flask import Flask, request, jsonify
 from rapidfuzz.fuzz import ratio
@@ -105,7 +105,7 @@ def fuzzy_match(word: str, target: str, threshold=70):
     return score >= threshold
 
 
-def downscale_image_if_needed(pil_image: Image.Image, max_size=1080):
+def downscale_image_if_needed(pil_image: Image, max_size=1080):
     """
     Réduit la taille de l'image (PIL) si la dimension la plus grande > max_size.
     """
@@ -116,7 +116,7 @@ def downscale_image_if_needed(pil_image: Image.Image, max_size=1080):
         new_h = int(h * ratio)
         pil_image = pil_image.resize(
             (new_w, new_h),
-            resample=Image.Resampling.LANCZOS
+            resample=Resampling.LANCZOS
         )
     return pil_image
 
@@ -127,7 +127,7 @@ def extract_text_with_ocr(file_storage, tolerance=0.2):
     puis utilise EasyOCR pour extraire le texte (avec un seuil 'tolerance').
     Retourne la liste des mots extraits.
     """
-    pil_image = Image.open(file_storage)
+    pil_image = open(file_storage)
     pil_image = downscale_image_if_needed(pil_image, max_size=1080)
 
     # Convertir PIL -> bytes
