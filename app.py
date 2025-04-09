@@ -28,6 +28,12 @@ print("🔄 Initialisation d'EasyOCR (CPU uniquement)...")
 reader = Reader(['fr'], gpu=False)
 print("✅ EasyOCR chargé !")
 
+# Effectuer une inférence "dummy" pour charger le modèle en mémoire
+try:
+    _ = reader.readtext(b'')  # ou avec une petite image d'exemple incluse dans l'image Docker
+except Exception:
+    pass  # Le but est juste de charger les poids
+
 ########################################################
 # Listes & Regex
 ########################################################
