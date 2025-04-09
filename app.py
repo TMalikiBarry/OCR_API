@@ -28,12 +28,6 @@ print("🔄 Initialisation d'EasyOCR (CPU uniquement)...")
 reader = Reader(['fr'], gpu=False)
 print("✅ EasyOCR chargé !")
 
-# Effectuer une inférence "dummy" pour charger le modèle en mémoire
-try:
-    _ = reader.readtext(b'')  # ou avec une petite image d'exemple incluse dans l'image Docker
-except Exception:
-    pass  # Le but est juste de charger les poids
-
 ########################################################
 # Listes & Regex
 ########################################################
@@ -133,16 +127,26 @@ def extract_text_with_ocr(file_storage, tolerance=0.2):
     puis utilise EasyOCR pour extraire le texte (avec un seuil 'tolerance').
     Retourne la liste des mots extraits.
     """
+    print("EXTRACTION DE TEXTE ")
     pil_image = open(file_storage)
+    print("EXTRACTION DE TEXTE OUVERTURE IMAGE")
+
     pil_image = downscale_image_if_needed(pil_image, max_size=1080)
+
+    print("EXTRACTION DE TEXTE IMAGE DOWNSCALED")
 
     # Convertir PIL -> bytes
     img_bytes = BytesIO()
     pil_image.save(img_bytes, format='PNG')
+    print("EXTRACTION DE TEXTE SAAAVED")
+
     content = img_bytes.getvalue()
+    print("EXTRACTION DE TEXTE CONTENTIMAGE")
 
     # Extraire le texte via EasyOCR
     results = reader.readtext(content)  # detail=1 => [ ([x1,y1],[x2,y2]...), 'texte', conf ]
+    print("EXTRACTION DE TEXTE READED IMAGE")
+
     extracted_text = [res[1] for res in results if res[2] > tolerance]
     return extracted_text
 
