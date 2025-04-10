@@ -88,9 +88,6 @@ def parse_cgr_recto_text(extracted_text):
                     data["date_mise_en_circulation"] = extracted_text[idx]
                     print(f"     -> Date trouvée à l'index {idx}: {extracted_text[idx]}")
                     break
-                else:
-                    if idx < len(extracted_text):
-                        print(f"     -> Index {idx} ('{extracted_text[idx]}') ne correspond pas au pattern de date")
 
         # Vérifie si le mot correspond au pattern complet d’un nom titulaire
         if fullmatch(FULLNAME_TITULAIRE_PATTERN, word):
