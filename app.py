@@ -415,8 +415,8 @@ def endpoint_extract_recto():
     recto_data = parse_cgr_recto_text(extracted_text)
 
     # Inclure le warning dans la réponse si nécessaire
-    if warning:
-        recto_data["warning"] = warning
+    # if warning:
+    #     recto_data["warning"] = warning
 
     return jsonify(recto_data)
 
@@ -463,8 +463,8 @@ def endpoint_extract_verso():
 
     verso_data = parse_cgr_verso_text(extracted_text)
 
-    if warning:
-        verso_data["warning"] = warning
+    # if warning:
+    #     verso_data["warning"] = warning
 
     return jsonify(verso_data)
 
