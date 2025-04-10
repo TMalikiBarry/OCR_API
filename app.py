@@ -1,343 +1,35 @@
-from io import BytesIO
-# import re
-from re import sub, match, fullmatch
-from time import time
-
-from PIL.Image import Image, open, Resampling
+# app.py
 from easyocr import Reader
 from flask import Flask, request, jsonify
-from rapidfuzz.fuzz import ratio
+
+from utils.auth import (check_auth)
+from utils.ocr_parser import (
+    parse_cgr_recto_text,
+    parse_cgr_verso_text
+)
+# Importation des fonctions de nos modules utilitaires
+from utils.preprocessing import extract_text_with_ocr
 
 ########################################################
 # Configuration Flask & EasyOCR
 ########################################################
 app = Flask(__name__)
 
-########################################################
-# Clés d'authentification
-########################################################
-MYTOUCHPOINT_KEYS = {
-    "5D13989CABA5EDF241031D8006E29949BAECD065768C29F557B74681FAE31A6DECC31698FC313985A1D9D8CAF27D362676ABCD843022CCF709F918C1B58A4CF8",
-    "6E8283286DFC864454F4FCD9738FBE644982FAAB3B2F98B79D11BDDF4129AC0172FC103D8B0C6E0AB023BF85803C6BE00BE80DB27F7DE9BD36E7125CCA637119"
-}
-
-PUBLIC_KEYS = {
-    "C3835FDAC10F61B49E27619F7618BDC7A12BEA581A717240FE775FA93B3A928D456374ACB73044F0ED6B79F220DA0D79EA23082D39477D1923BB5B360E8DD56A"
-}
 
 print("🔄 Initialisation d'EasyOCR (CPU uniquement)...")
 reader = Reader(['fr'], gpu=False)
 print("✅ EasyOCR chargé !")
 
-########################################################
-# Listes & Regex
-########################################################
-ENERGIES = ["essence", "diesel", "électrique", "electrique", "hybride", "hydrogène"]
-IMMATRICULATION_PATTERN = r"^[A-Z]{2}[-.\s]?\d{2,4}[-.\s]?[A-Z]{1,3}$"  # AA-171-TX
-DATE_PATTERN = r"\d{2}/\d{2}/\d{4}"  # 13/09/2024
-NUM_TITULAIRE_PATTERN = r"\b\d{9,12}\b"
-FULLNAME_TITULAIRE_PATTERN = r"^(?:M\.(?:I)?[A-Z]*\s?[A-Z]+(?:\s[A-Z]+)+|(?:I)?[A-Z]+(?:\s[A-Z]+)+)$"
-CYLINDREE_PATTERN = r"^\d{2,7}\s*cm3$"
 
 
 ########################################################
-# Fonctions Utilitaires & auth
+# Endpoints
 ########################################################
 
-def check_auth_old():
-    """
-    Vérifie la présence du paramètre 'secret-key' en query string.
-    Détermine le rôle : 'mytouchpoint' ou 'public'.
-    Retourne (role, None) si OK, ou (None, (json, code)) si erreur.
-    """
-    secret_key = request.args.get('secret-key')
-    if not secret_key:
-        return None, (jsonify({"error": "Paramètre 'secret-key' manquant"}), 403)
-
-    # Déterminer le rôle
-    if secret_key in MYTOUCHPOINT_KEYS:
-        return "mytouchpoint", None
-    elif secret_key in PUBLIC_KEYS:
-        return "public", None
-    else:
-        return None, (jsonify({"error": "Clé secrète invalide ou non autorisée"}), 403)
-
-
-def check_auth():
-    """
-    Vérifie la présence du paramètre 'secret-key' dans le corps (JSON ou form-data)
-    ou en query string.
-    Détermine le rôle : 'mytouchpoint' ou 'public'.
-    Retourne (role, None) si OK, ou (None, (json, code)) si erreur.
-    """
-    # Vérifier dans le JSON
-    secret_key = None
-    if request.is_json:
-        data = request.get_json(silent=True)
-        if data:
-            secret_key = data.get('secret-key')
-
-    # Sinon, vérifier dans les données du formulaire
-    if not secret_key:
-        secret_key = request.form.get('secret-key')
-
-    # Enfin, vérifier dans les query parameters
-    if not secret_key:
-        secret_key = request.args.get('secret-key')
-
-    # Si la clé est toujours absente, renvoyer une erreur
-    if not secret_key:
-        return None, (jsonify({"error": "Paramètre 'secret-key' manquant"}), 403)
-
-    # Déterminer le rôle
-    if secret_key in MYTOUCHPOINT_KEYS:
-        return "mytouchpoint", None
-    elif secret_key in PUBLIC_KEYS:
-        return "public", None
-    else:
-        return None, (jsonify({"error": "Clé secrète invalide ou non autorisée"}), 403)
-
-
-def fuzzy_match(word: str, target: str, threshold=70):
-    """
-    Compare deux chaînes en minuscule via rapidfuzz et renvoie True si score >= threshold.
-    """
-    score = ratio(word.lower(), target.lower())
-    return score >= threshold
-
-
-def downscale_image_if_needed(pil_image: Image, max_size=1080):
-    """
-    Réduit la taille de l'image (PIL) si la dimension la plus grande > max_size.
-    """
-    w, h = pil_image.size
-    if max(w, h) > max_size:
-        ratio = max_size / float(max(w, h))
-        new_w = int(w * ratio)
-        new_h = int(h * ratio)
-        pil_image = pil_image.resize(
-            (new_w, new_h),
-            resample=Resampling.LANCZOS
-        )
-    return pil_image
-
-def extract_text_with_ocr(file_storage, tolerance=0.2):
-    start_time = time()
-    print("=== Début OCR ===")
-
-    # Ouverture de l'image
-    t0 = time()
-    pil_image = open(file_storage)
-    print(f"Ouverture image: {time() - t0:.2f} sec")
-
-    # Downscale si besoin
-    t1 = time()
-    pil_image = downscale_image_if_needed(pil_image, max_size=1080)
-    print(f"Downscale image: {time() - t1:.2f} sec")
-
-    # Convertir PIL -> bytes
-    t2 = time()
-    img_bytes = BytesIO()
-    pil_image.save(img_bytes, format='PNG')
-    content = img_bytes.getvalue()
-    print(f"Conversion en bytes: {time() - t2:.2f} sec")
-
-    # OCR
-    t3 = time()
-    results = reader.readtext(content)
-    print(f"Lecture EasyOCR: {time() - t3:.2f} sec")
-
-    # Extraction filtrée
-    extracted_text = [res[1] for res in results if res[2] > tolerance]
-
-    print(f"=== Fin OCR (total: {time() - start_time:.2f} sec) ===")
-    return extracted_text
-
-
-# def extract_text_with_ocr(file_storage, tolerance=0.2):
-#     """
-#     Lit le fichier image (FileStorage), le convertit en PIL, downscale si besoin,
-#     puis utilise EasyOCR pour extraire le texte (avec un seuil 'tolerance').
-#     Retourne la liste des mots extraits.
-#     """
-#     print("EXTRACTION DE TEXTE ")
-#     pil_image = open(file_storage)
-#     print("EXTRACTION DE TEXTE OUVERTURE IMAGE")
-#
-#     pil_image = downscale_image_if_needed(pil_image, max_size=1080)
-#
-#     print("EXTRACTION DE TEXTE IMAGE DOWNSCALED")
-#
-#     # Convertir PIL -> bytes
-#     img_bytes = BytesIO()
-#     pil_image.save(img_bytes, format='PNG')
-#     print("EXTRACTION DE TEXTE SAAAVED")
-#
-#     content = img_bytes.getvalue()
-#     print("EXTRACTION DE TEXTE CONTENTIMAGE")
-#
-#     # Extraire le texte via EasyOCR
-#     results = reader.readtext(content)  # detail=1 => [ ([x1,y1],[x2,y2]...), 'texte', conf ]
-#     print("EXTRACTION DE TEXTE READED IMAGE")
-#
-#     extracted_text = [res[1] for res in results if res[2] > tolerance]
-#     return extracted_text
-
-
-########################################################
-# Détection du type de document (recto/verso)
-########################################################
-def detect_document_type(extracted_text):
-    """
-    Détecte si l'image correspond plutôt à un recto ou un verso,
-    en comptant les mots-clés ou regex attendus.
-    Renvoie 'recto', 'verso' ou None si non reconnu.
-    """
-    recto_keywords = ["immatriculation", "titulaire", "adresse"]
-    verso_keywords = ["energie", "puissance", "vin", "marque", "cylindrée"]
-
-    recto_score = 0
-    verso_score = 0
-
-    for word in extracted_text:
-        wlower = word.lower()
-
-        # Score recto
-        if any(fuzzy_match(wlower, kw, 65) for kw in recto_keywords):
-            recto_score += 1
-        # Immatriculation pattern
-        if match(IMMATRICULATION_PATTERN, word):
-            recto_score += 1
-        # Score verso
-        if any(fuzzy_match(wlower, kw, 65) for kw in verso_keywords):
-            verso_score += 1
-        # VIN
-        if match(r"^[A-Z0-9]{17}$", word.upper()):
-            verso_score += 1
-
-    if recto_score > verso_score:
-        return "recto"
-    elif verso_score > recto_score:
-        return "verso"
-    else:
-        return None
-
-
-########################################################
-# Fonctions de parsing recto / verso
-########################################################
-def parse_cgr_recto_text(extracted_text):
-    data = {
-        "date_mise_en_circulation": None,
-        "numero_immatriculation": None,
-        "titulaire": None,
-        "nom": None,
-        "prenom": None,
-        "numero_titulaire": None,
-        "adresse_commune": None
-    }
-
-    print(">>> Début du parsing du recto")
-    print("Texte extrait :", extracted_text)
-
-    for i, word in enumerate(extracted_text):
-        # print(f"\nTraitement du mot index {i}: '{word}'")
-        # Immatriculation
-        if match(IMMATRICULATION_PATTERN, word):
-            data["numero_immatriculation"] = word
-            print(f"  -> Immatriculation trouvée : {word}")
-
-        # Date (fuzzy 'Date Immatriculation')
-        if fuzzy_match(word, "Date Immatriculation", 70):
-            print(f"  -> Mot déclencheur pour date détecté : '{word}'")
-            for offset in [1, 2, 3, 4]:
-                idx = i + offset
-                if idx < len(extracted_text) and match(DATE_PATTERN, extracted_text[idx]):
-                    data["date_mise_en_circulation"] = extracted_text[idx]
-                    print(f"     -> Date trouvée à l'index {idx}: {extracted_text[idx]}")
-                    break
-                else:
-                    if idx < len(extracted_text):
-                        print(f"     -> Index {idx} ('{extracted_text[idx]}') ne correspond pas au pattern de date")
-
-        # Titulaire (full name)
-        if fullmatch(FULLNAME_TITULAIRE_PATTERN, word) and i in range(6, 16):
-            data["titulaire"] = word
-            print(f"  -> Titulaire détecté à l'index {i}: {word}")
-            # Retirer le préfixe M., M.I, MI, ou M au début
-            cleaned = sub(r'^(?:M\.I?\s?|MI\s?|M\s?)', '', word).lstrip()
-            print(f"     -> Après suppression du préfixe: '{cleaned}'")
-            splitted = cleaned.split()
-            if len(splitted) > 1:
-                data["nom"] = splitted[0]
-                data["prenom"] = " ".join(splitted[1:])
-                print(f"     -> Nom: '{data['nom']}', Prénom: '{data['prenom']}'")
-            else:
-                print("     -> Impossible de séparer nom et prénom (moins de 2 mots)")
-
-        # Numéro titulaire
-        if fullmatch(NUM_TITULAIRE_PATTERN, word):
-            data["numero_titulaire"] = word
-            print(f"  -> Numéro titulaire trouvé : {word}")
-
-        # Adresse commune
-        if (fuzzy_match(word, "adresse commune", 70) or
-            fuzzy_match(word, "adresse", 65) or
-            fuzzy_match(word, "commune", 60)) and i + 2 < len(extracted_text):
-
-            print(f"  -> Mot déclencheur pour adresse détecté à l'index {i}: '{word}'")
-            if len(extracted_text[i + 1]) >= 7:
-                data["adresse_commune"] = extracted_text[i + 1]
-                print(f"     -> Adresse commune trouvée à l'index {i + 1}: '{extracted_text[i + 1]}'")
-            elif i + 2 < len(extracted_text) and len(extracted_text[i + 2]) >= 7:
-                data["adresse_commune"] = extracted_text[i + 2]
-                print(f"     -> Adresse commune trouvée à l'index {i + 2}: '{extracted_text[i + 2]}'")
-            elif i + 3 < len(extracted_text) and len(extracted_text[i + 3]) >= 7:
-                data["adresse_commune"] = extracted_text[i + 3]
-                print(f"     -> Adresse commune trouvée à l'index {i + 3}: '{extracted_text[i + 3]}'")
-            else:
-                print("     -> Aucune adresse commune trouvée avec une longueur suffisante.")
-
-    print(">>> Fin du parsing, données extraites :", data)
-    return data
-
-
-def parse_cgr_verso_text(extracted_text):
-    data = {
-        "energie": None,
-        "puissance": None,
-        "vin": None,
-        "marque": None,
-        "cylindree": None
-    }
-
-    for i, word in enumerate(extracted_text):
-        wlower = word.lower()
-
-        # Energie
-        for eng in ENERGIES:
-            if fuzzy_match(wlower, eng, 70):
-                data["energie"] = word
-
-        # Puissance ex: '8 CV'
-        if match(r"^(\d+)\s?CV$", word):
-            data["puissance"] = word
-
-        # VIN
-        if match(r"^[A-Z0-9]{17}$", word.upper()):
-            data["vin"] = word
-
-        # Marque
-        if fuzzy_match(wlower, "marque", 65) and i + 1 < len(extracted_text):
-            data["marque"] = extracted_text[i + 1]
-
-        # Cylindrée
-        if match(CYLINDREE_PATTERN, wlower):
-            data["cylindree"] = word
-        elif fuzzy_match(wlower, "cylindrée", 80) and i + 1 < len(extracted_text):
-            data["cylindree"] = extracted_text[i + 1]
-
-    return data
+# 0) /test : tester facilement le déploiement
+@app.route('/test', methods=['GET'])
+def isDeploiementOK():
+    return jsonify({"message": "Votre API, EasyOcrAPI, a été déployé avec succès"})
 
 
 ########################################################
@@ -347,27 +39,24 @@ def parse_cgr_verso_text(extracted_text):
 def endpoint_extract_text():
     """
     Accessible aux deux rôles (mytouchpoint, public).
-    """
 
-    role, auth_error = check_auth()
-
-    if auth_error:
-        return auth_error  # (json, code)
-
-    """
     Retourne la liste de mots extraits de l'image (texte brut).
     Paramètre 'tolerance' (float) en query string (ex: ?tolerance=0.4).
     """
+    role, auth_error = check_auth()
+    if auth_error:
+        return auth_error
+
     if 'image' not in request.files:
         return jsonify({"error": "Aucune image fournie"}), 400
 
     print("🟢 Requête reçue Extraction Full Text!")
-    print("Headers: ", request.headers)
-    print("Form Data: ", request.form)
-    print("Files: ", request.files)
+    print("Headers:", request.headers)
+    print("Form Data:", request.form)
+    print("Files:", request.files)
 
     tolerance = request.args.get('tolerance', default=0.2, type=float)
-    extracted_text = extract_text_with_ocr(request.files['image'], tolerance)
+    extracted_text = extract_text_with_ocr(request.files['image'], reader, tolerance)
     return jsonify({"text": extracted_text})
 
 
@@ -378,46 +67,28 @@ def endpoint_extract_text():
 def endpoint_extract_recto():
     """
     Accessible uniquement à mytouchpoint.
+
+    Extrait les infos du recto (date, immatriculation, titulaire, etc.).
+    Si l'image semble être un verso, un 'warning' peut être inclus dans la réponse.
     """
-
     role, auth_error = check_auth()
-
     if auth_error:
         return auth_error
-
     if role != "mytouchpoint":
         return jsonify({"error": "Accès refusé. Endpoint réservé à MyTouchpoint."}), 403
 
-    """
-    Extrait les infos du recto (date, immatriculation, titulaire, etc.).
-    Si l'image semble être un verso, on met un 'warning' dans la réponse.
-    """
     if 'image' not in request.files:
         return jsonify({"error": "Aucune image fournie"}), 400
 
     print("🟢 Requête reçue Extraction Recto!")
-    print("Headers: ", request.headers)
-    print("Form Data: ", request.form)
-    print("Files: ", request.files)
+    print("Headers:", request.headers)
+    print("Form Data:", request.form)
+    print("Files:", request.files)
 
     tolerance = request.args.get('tolerance', default=0.2, type=float)
-    extracted_text = extract_text_with_ocr(request.files['image'], tolerance)
-
-    # # Détecter le type
-    # doc_type = detect_document_type(extracted_text)
-    # if doc_type is None:
-    #     return jsonify({"error": "Le type de document fourni n'est pas reconnu."}), 400
-    #
-    # warning = None
-    # if doc_type == "verso":
-    #     warning = "Attention : le document semble être un verso, alors que l'endpoint attend un recto."
+    extracted_text = extract_text_with_ocr(request.files['image'], reader, tolerance)
 
     recto_data = parse_cgr_recto_text(extracted_text)
-
-    # Inclure le warning dans la réponse si nécessaire
-    # if warning:
-    #     recto_data["warning"] = warning
-
     return jsonify(recto_data)
 
 
@@ -428,44 +99,28 @@ def endpoint_extract_recto():
 def endpoint_extract_verso():
     """
     Accessible uniquement à mytouchpoint.
+
+    Extrait les infos du verso (energie, puissance, vin, marque, cylindree).
+    Si l'image semble être un recto, un 'warning' peut être inclus dans la réponse.
     """
-
     role, auth_error = check_auth()
-
     if auth_error:
         return auth_error
-
     if role != "mytouchpoint":
         return jsonify({"error": "Accès refusé. Endpoint réservé à MyTouchpoint."}), 403
 
-    """
-    Extrait les infos du verso (energie, puissance, vin, marque, cylindree).
-    Si l'image semble être un recto, on met un 'warning' dans la réponse.
-    """
     if 'image' not in request.files:
         return jsonify({"error": "Aucune image fournie"}), 400
 
     print("🟢 Requête reçue Extraction Verso!")
-    print("Headers: ", request.headers)
-    print("Form Data: ", request.form)
-    print("Files: ", request.files)
+    print("Headers:", request.headers)
+    print("Form Data:", request.form)
+    print("Files:", request.files)
 
     tolerance = request.args.get('tolerance', default=0.2, type=float)
-    extracted_text = extract_text_with_ocr(request.files['image'], tolerance)
-
-    # doc_type = detect_document_type(extracted_text)
-    # if doc_type is None:
-    #     return jsonify({"error": "Le type de document fourni n'est pas reconnu."}), 400
-    #
-    # warning = None
-    # if doc_type == "recto":
-    #     warning = "Attention : le document semble être un recto, alors que l'endpoint attend un verso."
+    extracted_text = extract_text_with_ocr(request.files['image'], reader, tolerance)
 
     verso_data = parse_cgr_verso_text(extracted_text)
-
-    # if warning:
-    #     verso_data["warning"] = warning
-
     return jsonify(verso_data)
 
 
@@ -475,48 +130,37 @@ def endpoint_extract_verso():
 @app.route('/extract-cgr', methods=['POST'])
 def endpoint_extract_cgr():
     """
-    Reçoit deux images : image_recto, image_verso
+    Reçoit deux images : image_recto, image_verso.
     Retourne un JSON unifié avec les champs recto + verso.
     Accessible uniquement à mytouchpoint.
     """
-
     role, auth_error = check_auth()
-
     if auth_error:
         return auth_error
-
     if role != "mytouchpoint":
         return jsonify({"error": "Accès refusé. Endpoint réservé à MyTouchpoint."}), 403
 
     if 'image_recto' not in request.files or 'image_verso' not in request.files:
         return jsonify({"error": "Deux images (recto, verso) doivent être fournies"}), 400
 
-    print("🟢 Requête reçue Extraction Verso!")
-    print("Headers: ", request.headers)
-    print("Form Data: ", request.form)
-    print("Files: ", request.files)
+    print("🟢 Requête reçue Extraction CGR!")
+    print("Headers:", request.headers)
+    print("Form Data:", request.form)
+    print("Files:", request.files)
 
     tolerance = request.args.get('tolerance', default=0.2, type=float)
 
-    # Recto
-    recto_text = extract_text_with_ocr(request.files['image_recto'], tolerance)
+    # Extraction pour le recto
+    recto_text = extract_text_with_ocr(request.files['image_recto'], reader, tolerance)
     recto_data = parse_cgr_recto_text(recto_text)
 
-    # Verso
-    verso_text = extract_text_with_ocr(request.files['image_verso'], tolerance)
+    # Extraction pour le verso
+    verso_text = extract_text_with_ocr(request.files['image_verso'], reader, tolerance)
     verso_data = parse_cgr_verso_text(verso_text)
 
-    # Fusion
+    # Fusion des données
     merged_data = {**recto_data, **verso_data}
     return jsonify(merged_data)
-
-
-########################################################
-# 0) /test : tester facilement le déploiement
-########################################################
-@app.route('/test', methods=['GET'])
-def isDeploiementOK():
-    return jsonify({"message": "Votre API, EasyOcrAPI, a été déployé avec succès"})
 
 
 ########################################################
