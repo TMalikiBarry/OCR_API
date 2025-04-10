@@ -10,6 +10,7 @@ IMMATRICULATION_PATTERN = r"^[A-Z]{2}[-.\s]?\d{2,4}[-.\s]?[A-Z]{1,3}$"  # Exempl
 DATE_PATTERN = r"\d{2}/\d{2}/\d{4}"  # Exemple : 13/09/2024
 NUM_TITULAIRE_PATTERN = r"\b\d{9,12}\b"
 FULLNAME_TITULAIRE_PATTERN = r"^(?:M\.(?:I)?[A-Z]*\s?[A-Z]+(?:\s[A-Z]+)+|(?:I)?[A-Z]+(?:\s[A-Z]+)+)$"
+TITULAIRE_PREFIX_PATTERN = r'^M(?::|\s)?(?:\.?\s?I)?\s?'
 CYLINDREE_PATTERN = r"^\d{2,7}\s*cm3$"
 
 
@@ -91,18 +92,40 @@ def parse_cgr_recto_text(extracted_text):
                     if idx < len(extracted_text):
                         print(f"     -> Index {idx} ('{extracted_text[idx]}') ne correspond pas au pattern de date")
 
-        if fullmatch(FULLNAME_TITULAIRE_PATTERN, word) and i in range(6, 16):
-            data["titulaire"] = word
-            print(f"  -> Titulaire détecté à l'index {i}: {word}")
-            cleaned = sub(r'^(?:M\.I?\s?|MI\s?|M\s?)', '', word).lstrip()
-            print(f"     -> Après suppression du préfixe: '{cleaned}'")
-            splitted = cleaned.split()
-            if len(splitted) > 1:
-                data["nom"] = splitted[0]
-                data["prenom"] = " ".join(splitted[1:])
-                print(f"     -> Nom: '{data['nom']}', Prénom: '{data['prenom']}'")
+        # Vérifie si le mot correspond au pattern complet d’un nom titulaire
+        if fullmatch(FULLNAME_TITULAIRE_PATTERN, word):
+            full_name = word
+
+            # Cas 1 : le mot commence par un préfixe (fusionné)
+            if match(TITULAIRE_PREFIX_PATTERN, word):
+                cleaned = sub(TITULAIRE_PREFIX_PATTERN, '', word).strip()
+            # Cas 2 : mot précédent est un préfixe (séparé)
+            elif i > 0 and match(TITULAIRE_PREFIX_PATTERN, extracted_text[i - 1]):
+                full_name = f"{extracted_text[i - 1]} {word}"
+                cleaned = sub(TITULAIRE_PREFIX_PATTERN, '', full_name).strip()
+
+            # Assignation
+            data["titulaire"] = full_name
+            parts = cleaned.split()
+            if len(parts) >= 2:
+                data["nom"] = parts[0]
+                data["prenom"] = " ".join(parts[1:])
             else:
-                print("     -> Impossible de séparer nom et prénom (moins de 2 mots)")
+                print(f"[WARN] Titulaire détecté '{full_name}' mais nom/prénom mal séparés")
+
+        # if fullmatch(FULLNAME_TITULAIRE_PATTERN, word) and i in range(6, 16):
+        #     data["titulaire"] = word
+        #     print(f"  -> Titulaire détecté à l'index {i}: {word}")
+        #     cleaned = sub(r'^(?:M\.I?\s?|MI\s?|M\s?)', '', word).lstrip()
+        #     print(f"     -> Après suppression du préfixe: '{cleaned}'")
+        #     splitted = cleaned.split()
+        #     if len(splitted) > 1:
+        #         data["nom"] = splitted[0]
+        #         data["prenom"] = " ".join(splitted[1:])
+        #         print(f"     -> Nom: '{data['nom']}', Prénom: '{data['prenom']}'")
+        #     else:
+        #         print("     -> Impossible de séparer nom et prénom (moins de 2 mots)")
+        #
 
         if fullmatch(NUM_TITULAIRE_PATTERN, word):
             data["numero_titulaire"] = word
