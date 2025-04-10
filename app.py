@@ -237,49 +237,68 @@ def parse_cgr_recto_text(extracted_text):
         "adresse_commune": None
     }
 
+    print(">>> Début du parsing du recto")
+    print("Texte extrait :", extracted_text)
+
     for i, word in enumerate(extracted_text):
+        # print(f"\nTraitement du mot index {i}: '{word}'")
         # Immatriculation
         if match(IMMATRICULATION_PATTERN, word):
             data["numero_immatriculation"] = word
+            print(f"  -> Immatriculation trouvée : {word}")
 
         # Date (fuzzy 'Date Immatriculation')
         if fuzzy_match(word, "Date Immatriculation", 70):
+            print(f"  -> Mot déclencheur pour date détecté : '{word}'")
             for offset in [1, 2, 3, 4]:
                 idx = i + offset
                 if idx < len(extracted_text) and match(DATE_PATTERN, extracted_text[idx]):
                     data["date_mise_en_circulation"] = extracted_text[idx]
+                    print(f"     -> Date trouvée à l'index {idx}: {extracted_text[idx]}")
                     break
+                else:
+                    if idx < len(extracted_text):
+                        print(f"     -> Index {idx} ('{extracted_text[idx]}') ne correspond pas au pattern de date")
 
         # Titulaire (full name)
         if fullmatch(FULLNAME_TITULAIRE_PATTERN, word) and i in range(6, 16):
             data["titulaire"] = word
-
-            # 1) on retire M. ou M.I ou MI ou M au tout début
-            # word = re.sub(r'^(?:M\.(?:I)?|MI)', '', word).lstrip()
-            word = sub(r'^(?:M\.I?\s?|MI\s?|M\s?)', '', word).lstrip()
-
-            # Séparer nom/prénom
-            splitted = word.split()
+            print(f"  -> Titulaire détecté à l'index {i}: {word}")
+            # Retirer le préfixe M., M.I, MI, ou M au début
+            cleaned = sub(r'^(?:M\.I?\s?|MI\s?|M\s?)', '', word).lstrip()
+            print(f"     -> Après suppression du préfixe: '{cleaned}'")
+            splitted = cleaned.split()
             if len(splitted) > 1:
                 data["nom"] = splitted[0]
                 data["prenom"] = " ".join(splitted[1:])
+                print(f"     -> Nom: '{data['nom']}', Prénom: '{data['prenom']}'")
+            else:
+                print("     -> Impossible de séparer nom et prénom (moins de 2 mots)")
 
         # Numéro titulaire
         if fullmatch(NUM_TITULAIRE_PATTERN, word):
             data["numero_titulaire"] = word
+            print(f"  -> Numéro titulaire trouvé : {word}")
 
         # Adresse commune
-        if (fuzzy_match(word, "adresse commune", 70) or fuzzy_match(word, "adresse", 65)
-            or fuzzy_match(word, "commune", 60)) and i + 2 < len(extracted_text):
+        if (fuzzy_match(word, "adresse commune", 70) or
+            fuzzy_match(word, "adresse", 65) or
+            fuzzy_match(word, "commune", 60)) and i + 2 < len(extracted_text):
 
-            # next_word = extracted_text[i + 1]
+            print(f"  -> Mot déclencheur pour adresse détecté à l'index {i}: '{word}'")
             if len(extracted_text[i + 1]) >= 7:
                 data["adresse_commune"] = extracted_text[i + 1]
-            elif len(extracted_text[i + 2]) >= 7:
+                print(f"     -> Adresse commune trouvée à l'index {i + 1}: '{extracted_text[i + 1]}'")
+            elif i + 2 < len(extracted_text) and len(extracted_text[i + 2]) >= 7:
                 data["adresse_commune"] = extracted_text[i + 2]
-            else:
+                print(f"     -> Adresse commune trouvée à l'index {i + 2}: '{extracted_text[i + 2]}'")
+            elif i + 3 < len(extracted_text) and len(extracted_text[i + 3]) >= 7:
                 data["adresse_commune"] = extracted_text[i + 3]
+                print(f"     -> Adresse commune trouvée à l'index {i + 3}: '{extracted_text[i + 3]}'")
+            else:
+                print("     -> Aucune adresse commune trouvée avec une longueur suffisante.")
 
+    print(">>> Fin du parsing, données extraites :", data)
     return data
 
 
@@ -384,14 +403,14 @@ def endpoint_extract_recto():
     tolerance = request.args.get('tolerance', default=0.2, type=float)
     extracted_text = extract_text_with_ocr(request.files['image'], tolerance)
 
-    # Détecter le type
-    doc_type = detect_document_type(extracted_text)
-    if doc_type is None:
-        return jsonify({"error": "Le type de document fourni n'est pas reconnu."}), 400
-
-    warning = None
-    if doc_type == "verso":
-        warning = "Attention : le document semble être un verso, alors que l'endpoint attend un recto."
+    # # Détecter le type
+    # doc_type = detect_document_type(extracted_text)
+    # if doc_type is None:
+    #     return jsonify({"error": "Le type de document fourni n'est pas reconnu."}), 400
+    #
+    # warning = None
+    # if doc_type == "verso":
+    #     warning = "Attention : le document semble être un verso, alors que l'endpoint attend un recto."
 
     recto_data = parse_cgr_recto_text(extracted_text)
 
@@ -434,13 +453,13 @@ def endpoint_extract_verso():
     tolerance = request.args.get('tolerance', default=0.2, type=float)
     extracted_text = extract_text_with_ocr(request.files['image'], tolerance)
 
-    doc_type = detect_document_type(extracted_text)
-    if doc_type is None:
-        return jsonify({"error": "Le type de document fourni n'est pas reconnu."}), 400
-
-    warning = None
-    if doc_type == "recto":
-        warning = "Attention : le document semble être un recto, alors que l'endpoint attend un verso."
+    # doc_type = detect_document_type(extracted_text)
+    # if doc_type is None:
+    #     return jsonify({"error": "Le type de document fourni n'est pas reconnu."}), 400
+    #
+    # warning = None
+    # if doc_type == "recto":
+    #     warning = "Attention : le document semble être un recto, alors que l'endpoint attend un verso."
 
     verso_data = parse_cgr_verso_text(extracted_text)
 

@@ -16,7 +16,7 @@ steps:
         '--memory', '8Gi',
         '--concurrency', '5',
         '--max-instances', '4',
-        '--min-instances', '2'
+        '--min-instances', '1'
       ]
 options:
   logging: CLOUD_LOGGING_ONLY
