@@ -20,6 +20,10 @@ print("🔄 Initialisation d'EasyOCR (CPU uniquement)...")
 reader = Reader(['fr'], gpu=False)
 print("✅ EasyOCR chargé !")
 
+try:
+    _ = reader.readtext(b'')  # Exécuter une inférence vide pour "réchauffer" le modèle
+except Exception:
+    pass
 
 
 ########################################################
