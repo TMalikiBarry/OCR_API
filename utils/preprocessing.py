@@ -4,7 +4,7 @@ from time import time
 from PIL.Image import Image, open, Resampling
 
 
-def downscale_image_if_needed(pil_image: Image, max_size=1080):
+def downscale_image_if_needed(pil_image: Image, max_size=720):
     """
     Réduit la taille de l'image (PIL) si la dimension la plus grande > max_size.
     """
@@ -13,7 +13,7 @@ def downscale_image_if_needed(pil_image: Image, max_size=1080):
         ratio = max_size / float(max(w, h))
         new_w = int(w * ratio)
         new_h = int(h * ratio)
-        pil_image = pil_image.resize((new_w, new_h), resample=Resampling.LANCZOS)
+        pil_image = pil_image.resize((new_w, new_h), resample=Resampling.BILINEAR)
     return pil_image
 
 
