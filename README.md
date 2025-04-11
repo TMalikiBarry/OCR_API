@@ -50,7 +50,7 @@ Extrait l'ensemble du **texte brut** de l'image.
 #### Exemple cURL :
 
 ```bash
-curl -X POST "http://localhost:9000/extract-text?tolerance=0.2" \
+curl -X POST "http://localhost:8080/extract-text?tolerance=0.2" \
   -F "secret-key=VOTRE_CLE_SECRETE" \
   -F "image=@/chemin/vers/image.png"
 ```
@@ -72,7 +72,7 @@ d'immatriculation, titulaire, nom, prénom, numéro titulaire, adresse commune).
 #### Exemple cURL :
 
 ```
- curl -X POST "http://localhost:9000/extract-recto?tolerance=0.2" \
+ curl -X POST "http://localhost:8080/extract-recto?tolerance=0.2" \
    -F "secret-key=VOTRE_CLE_SECRETE" \
    -F "image=@/chemin/vers/recto.png"
 ```
@@ -93,7 +93,7 @@ d'immatriculation, titulaire, nom, prénom, numéro titulaire, adresse commune).
 #### Exemple cURL :
 
 ``` bash
- curl -X POST "http://localhost:9000/extract-verso?tolerance=0.2" \
+ curl -X POST "http://localhost:8080/extract-verso?tolerance=0.2" \
   -F "secret-key=VOTRE_CLE_SECRETE" \
   -F "image=@/chemin/vers/verso.png"
 ```
@@ -114,7 +114,7 @@ chacune.
 #### Exemple cURL :
 
 ```
- curl -X POST "http://localhost:9000/extract-cgr?tolerance=0.2" \
+ curl -X POST "http://localhost:8080/extract-cgr?tolerance=0.2" \
   -F "secret-key=VOTRE_CLE_SECRETE" \
   -F "image_recto=@/chemin/vers/recto.png" \
   -F "image_verso=@/chemin/vers/verso.png"
@@ -158,5 +158,5 @@ python app.py
 
 ```
 docker build -t easy-ocr-api .
-docker run -p 9000:9000 easy-ocr-api
+docker run -p 8080:8080 easy-ocr-api
 ```
