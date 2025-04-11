@@ -141,8 +141,6 @@ def parse_cgr_recto_text(extracted_text):
             elif i + 3 < len(extracted_text) and len(extracted_text[i + 3]) >= 7:
                 data["adresse_commune"] = extracted_text[i + 3]
                 print(f"     -> Adresse commune trouvée à l'index {i + 3}: '{extracted_text[i + 3]}'")
-            else:
-                print("     -> Aucune adresse commune trouvée avec une longueur suffisante.")
 
     print(">>> Fin du parsing, données extraites :", data)
     return data

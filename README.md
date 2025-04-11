@@ -14,12 +14,15 @@ L’authentification se fait via un paramètre `secret-key` passé en query stri
 
 ## ⚙️ **Authentification**
 
-Pour accéder aux endpoints, ajoutez le paramètre `secret-key` dans l'URL.
+Pour accéder aux endpoints, vous devez inclure le paramètre `secret-key` dans le **corps de la requête** (en form-data).
+Par exemple, lors de l'envoi d'une image via une requête POST, vous pouvez spécifier la clé secrète ainsi :
 
-**Exemple d’appel :**
+**Exemple d’appel avec cURL :**
 
-```
-?secret-key=VOTRE_CLE_SECRETE
+```bash
+curl -X POST "http://localhost:8080/extract-text?tolerance=0.2" \
+     -F "secret-key=VOTRE_CLE_SECRETE" \
+     -F "image=@/chemin/vers/image.png"
 ```
 
 ## 🔑 **Rôles et Accès**
