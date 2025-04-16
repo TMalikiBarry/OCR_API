@@ -1,18 +1,38 @@
 # utils/ocr_parser.py
 
-from re import sub, match, fullmatch
+from re import sub, match, fullmatchm, compile
 
 from rapidfuzz.fuzz import ratio
 
 # Constantes et patterns
 ENERGIES = ["essence", "diesel", "électrique", "electrique", "hybride", "hydrogène"]
-IMMATRICULATION_PATTERN = r"^[A-Z]{2}[-.\s]?\d{2,4}[-.\s]?[A-Z]{1,3}$"  # Exemple : AA-171-TX
+# IMMATRICULATION_PATTERN = r"^[A-Z]{2}[-.\s]?\d{2,4}[-.\s]?[A-Z]{1,3}$"  # Exemple : AA-171-TX
 DATE_PATTERN = r"\d{2}/\d{2}/\d{4}"  # Exemple : 13/09/2024
 NUM_TITULAIRE_PATTERN = r"\b\d{9,12}\b"
-FULLNAME_TITULAIRE_PATTERN = r"^(?:M\.(?:I)?[A-Z]*\s?[A-Z]+(?:\s[A-Z]+)+|(?:I)?[A-Z]+(?:\s[A-Z]+)+)$"
-TITULAIRE_PREFIX_PATTERN = r'^M(?::|\s)?(?:\.?\s?I)?\s?'
+# FULLNAME_TITULAIRE_PATTERN = r"^(?:M\.(?:I)?[A-Z]*\s?[A-Z]+(?:\s[A-Z]+)+|(?:I)?[A-Z]+(?:\s[A-Z]+)+)$"
+FULLNAME_TITULAIRE_PATTERN = r'^(?:M(?:[:\.]\s?)?(?:I\s?)?)?[A-Z]+(?:\s[A-Z]+)+$'
+# TITULAIRE_PREFIX_PATTERN = r'^M(?::|\s)?(?:\.?\s?I)?\s?'
+TITULAIRE_PREFIX_PATTERN = r'^M(?:[:\.]\s?)?(?:I\s?)?'
 CYLINDREE_PATTERN = r"^\d{2,7}\s*cm3$"
 
+# IMMATRICULATION_PATTERN = r"^(?:[A-Z]{2}[\s-]?[0-9]{2,4}[\s-]?[A-Z]{1,3})(?:[\s-]?[A-Z]{1,3})?$"
+
+# Nouveau pattern strict pour les plaques d'immatriculation françaises/sénégalaises :
+# 2 lettres, séparateur optionnel, 3 chiffres, séparateur optionnel, 2 lettres.
+NEW_IMMATRICULATION_PATTERN = r"^[A-Z]{2}[-\s]?[0-9]{3}[-\s]?[A-Z]{2}$"
+
+# Dictionnaire des ambiguïtés fréquentes (à titre d'exemple)
+AMBIGUOUS_MAP = {
+    '4': 'A',
+    '0': 'O',
+    '1': 'I',
+    '8': 'B',
+    # Dans l'autre sens (mais nous ne corrigerons pas si c'est déjà correct)
+    'A': '4',
+    'O': '0',
+    'I': '1',
+    'B': '8'
+}
 
 def fuzzy_match(word: str, target: str, threshold=70):
     """
@@ -76,9 +96,9 @@ def parse_cgr_recto_text(extracted_text):
     print("Texte extrait :", extracted_text)
 
     for i, word in enumerate(extracted_text):
-        if match(IMMATRICULATION_PATTERN, word):
-            data["numero_immatriculation"] = word
-            print(f"  -> Immatriculation trouvée : {word}")
+        # if match(IMMATRICULATION_PATTERN, word):
+        #     data["numero_immatriculation"] = word
+        #     print(f"  -> Immatriculation trouvée : {word}")
 
         if fuzzy_match(word, "Date Immatriculation", 70):
             print(f"  -> Mot déclencheur pour date détecté : '{word}'")
@@ -142,6 +162,12 @@ def parse_cgr_recto_text(extracted_text):
                 data["adresse_commune"] = extracted_text[i + 3]
                 print(f"     -> Adresse commune trouvée à l'index {i + 3}: '{extracted_text[i + 3]}'")
 
+        corrected = correct_immatriculation(word)
+
+        if corrected is not None:
+            data["numero_immatriculation"] = corrected
+            print(f"  -> Immatriculation trouvée : {corrected}")
+
     print(">>> Fin du parsing, données extraites :", data)
     return data
 
@@ -180,3 +206,119 @@ def parse_cgr_verso_text(extracted_text):
             data["cylindree"] = extracted_text[i + 1]
 
     return data
+
+
+def correct_immatriculation(candidate: str, threshold: int = 80) -> str | None:
+    """
+    Corrige une chaîne candidate d'immatriculation issue d'OCR, en appliquant des corrections
+    seulement dans les positions attendues :
+      - Les 2 premiers caractères (lettres) et les 2 derniers (lettres) ne seront
+        corrigés que s'ils ne sont pas des lettres, en utilisant AMBIGUOUS_MAP.
+      - Les 3 caractères du milieu (chiffres) seront corrigés uniquement s'ils ne sont pas des chiffres.
+
+    Le pattern attendu est : 2 lettres, 3 chiffres, 2 lettres,
+    éventuellement avec des séparateurs (espace ou tiret).
+
+    Si la candidate est trop différente ou non plausible, retourne None.
+    Sinon, si une correction pertinente est trouvée et que le score fuzzy (comparaison sans séparateurs)
+    dépasse le seuil, renvoie le numéro corrigé, formaté en "LL-DDD-LL".
+    """
+    pattern = compile(NEW_IMMATRICULATION_PATTERN)
+
+    # D'abord, si la candidate correspond déjà au pattern strict, on la retourne directement.
+    if pattern.match(candidate):
+        return candidate
+
+    # Supprimer séparateurs pour analyser la structure (nous attendons 7 caractères : LLDDDLL)
+    clean = sub(r"[-\s]", "", candidate)
+    if len(clean) != 7:
+        return None  # La chaîne n'a pas la longueur attendue pour une plaque valide.
+
+    corrected = list(clean)
+    # Positions attendues :
+    #   positions 0 et 1 : lettres,
+    #   positions 2, 3 et 4 : chiffres,
+    #   positions 5 et 6 : lettres.
+    letter_positions = [0, 1, 5, 6]
+    digit_positions = [2, 3, 4]
+
+    for i in letter_positions:
+        ch = corrected[i]
+        if not ch.isalpha() and ch in AMBIGUOUS_MAP and AMBIGUOUS_MAP[ch].isalpha():
+            corrected[i] = AMBIGUOUS_MAP[ch]
+
+    for i in digit_positions:
+        ch = corrected[i]
+        if not ch.isdigit() and ch in AMBIGUOUS_MAP and AMBIGUOUS_MAP[ch].isdigit():
+            corrected[i] = AMBIGUOUS_MAP[ch]
+
+    # Reconstituer le candidat sans séparateurs
+    candidate_cleaned = "".join(corrected)
+    # Format strict: insérer des tirets pour obtenir "LL-DDD-LL"
+    formatted = f"{candidate_cleaned[0:2]}-{candidate_cleaned[2:5]}-{candidate_cleaned[5:7]}"
+
+    # On calcule un score fuzzy en comparant en retirant les séparateurs
+    score = ratio(sub(r"[-\s]", "", candidate), candidate_cleaned)
+    if score >= threshold and pattern.match(formatted):
+        return formatted
+
+    return candidate
+
+
+# def correct_immatriculation(candidate: str, threshold: int = 80) -> str | None:
+#     pattern = compile(IMMATRICULATION_PATTERN)
+#     if pattern.match(candidate):
+#         return candidate  # Déjà valide
+#
+#     # Supprimer les séparateurs pour analyser la structure
+#     clean = sub(r'[\s\-]', '', candidate)
+#
+#     if not (5 <= len(clean) <= 9):
+#         return None  # Pas une immatriculation valable
+#
+#     corrected = list(clean)
+#     # Heuristique : structure = LLDDDL ou LLDDDLL, etc.
+#     # On considère :
+#     #   lettres : 0,1 ; chiffres : 2..(n-3) ; lettres : (n-3) à fin
+#     length = len(clean)
+#
+#     # Indices de type
+#     first_letters = [0, 1]
+#     middle_digits = list(range(2, length - 3)) if length > 5 else [2]
+#     last_letters = list(range(length - 3, length))
+#
+#     for i, ch in enumerate(corrected):
+#         if i in first_letters or i in last_letters:
+#             # Attendu : lettre
+#             if ch in AMBIGUOUS_MAP and AMBIGUOUS_MAP[ch].isalpha():
+#                 corrected[i] = AMBIGUOUS_MAP[ch]
+#         elif i in middle_digits:
+#             # Attendu : chiffre
+#             if ch in AMBIGUOUS_MAP and AMBIGUOUS_MAP[ch].isdigit():
+#                 corrected[i] = AMBIGUOUS_MAP[ch]
+#
+#     # Reformater avec des tirets (pour tester le pattern)
+#     tentative = '-'.join([
+#         ''.join(corrected[0:2]),
+#         ''.join(corrected[2:-3]),
+#         ''.join(corrected[-3:])
+#     ])
+#
+#     # Valider le pattern + fuzzy
+#     if pattern.match(tentative):
+#         score = ratio(candidate, tentative)
+#         if score >= threshold:
+#             return tentative
+#
+#     return candidate
+
+
+# Exemple d'utilisation
+if __name__ == '__main__':
+    ocr_result = "A4-717-NS"  # OCR renvoie "A4-717-NS" au lieu de "AA-717-NS"
+    corrected = correct_immatriculation(ocr_result)
+    print(f"Original: {ocr_result} -> Corrigé: {corrected}")
+    print(correct_immatriculation("A4-717-NS"))  # → AA-717-NS
+    print(correct_immatriculation("AA-7I7-NS"))  # → AA-717-NS
+    print(correct_immatriculation("AA-OOO-NS"))  # → AA-000-NS
+    print(correct_immatriculation("AA-717-NB"))  # → AA-717-NB
