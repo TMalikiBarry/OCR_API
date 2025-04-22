@@ -1,6 +1,6 @@
 # utils/ocr_parser.py
 
-from re import sub, match, fullmatchm, compile
+from re import sub, match, fullmatch, compile
 
 from rapidfuzz.fuzz import ratio
 
@@ -58,7 +58,7 @@ def detect_document_type(extracted_text):
         wlower = word.lower()
         if any(fuzzy_match(wlower, kw, 65) for kw in recto_keywords):
             recto_score += 1
-        if match(IMMATRICULATION_PATTERN, word):
+        if match(NEW_IMMATRICULATION_PATTERN, word):
             recto_score += 1
         if any(fuzzy_match(wlower, kw, 65) for kw in verso_keywords):
             verso_score += 1
@@ -162,10 +162,10 @@ def parse_cgr_recto_text(extracted_text):
                 data["adresse_commune"] = extracted_text[i + 3]
                 print(f"     -> Adresse commune trouvée à l'index {i + 3}: '{extracted_text[i + 3]}'")
 
-        corrected = correct_immatriculation(word)
+        c_word = correct_immatriculation(word)
 
-        if corrected is not None:
-            data["numero_immatriculation"] = corrected
+        if c_word is not None:
+            data["numero_immatriculation"] = c_word
             print(f"  -> Immatriculation trouvée : {corrected}")
 
     print(">>> Fin du parsing, données extraites :", data)
