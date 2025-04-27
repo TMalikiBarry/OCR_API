@@ -32,7 +32,7 @@ except Exception:
 
 # 0) /test : tester facilement le déploiement
 @app.route('/test', methods=['GET'])
-def isDeploiementOK():
+def is_deploiement_ok():
     return jsonify({"message": "Votre API, EasyOcrAPI, a été déployé avec succès"})
 
 
