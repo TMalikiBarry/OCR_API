@@ -19,6 +19,7 @@
 
 # Exclure l'environnement virtuel
 venv/
+/.venv/
 
 # Exclure les fichiers de cache Python
 __pycache__/
