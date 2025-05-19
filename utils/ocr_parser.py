@@ -1,6 +1,7 @@
 # utils/ocr_parser.py
 
 from re import sub, match, fullmatch, compile
+from typing import Optional
 
 from rapidfuzz.fuzz import ratio
 
@@ -82,7 +83,7 @@ def parse_cgr_recto_text(extracted_text):
       - numero_titulaire
       - adresse_commune
     """
-    data = {
+    data: dict[str, Optional[str]] = {
         "date_mise_en_circulation": None,
         "numero_immatriculation": None,
         "titulaire": None,
@@ -112,7 +113,7 @@ def parse_cgr_recto_text(extracted_text):
         # Vérifie si le mot correspond au pattern complet d’un nom titulaire
         if fullmatch(FULLNAME_TITULAIRE_PATTERN, word):
             full_name = word
-
+            cleaned = None
             # Cas 1 : le mot commence par un préfixe (fusionné)
             if match(TITULAIRE_PREFIX_PATTERN, word):
                 cleaned = sub(TITULAIRE_PREFIX_PATTERN, '', word).strip()
@@ -123,26 +124,14 @@ def parse_cgr_recto_text(extracted_text):
 
             # Assignation
             data["titulaire"] = full_name
-            parts = cleaned.split()
-            if len(parts) >= 2:
-                data["nom"] = parts[0]
-                data["prenom"] = " ".join(parts[1:])
+            if cleaned is not None:
+                parts = cleaned.split()
+                if len(parts) >= 2:
+                    data["nom"] = parts[0]
+                    data["prenom"] = " ".join(parts[1:])
             else:
                 print(f"[WARN] Titulaire détecté '{full_name}' mais nom/prénom mal séparés")
 
-        # if fullmatch(FULLNAME_TITULAIRE_PATTERN, word) and i in range(6, 16):
-        #     data["titulaire"] = word
-        #     print(f"  -> Titulaire détecté à l'index {i}: {word}")
-        #     cleaned = sub(r'^(?:M\.I?\s?|MI\s?|M\s?)', '', word).lstrip()
-        #     print(f"     -> Après suppression du préfixe: '{cleaned}'")
-        #     splitted = cleaned.split()
-        #     if len(splitted) > 1:
-        #         data["nom"] = splitted[0]
-        #         data["prenom"] = " ".join(splitted[1:])
-        #         print(f"     -> Nom: '{data['nom']}', Prénom: '{data['prenom']}'")
-        #     else:
-        #         print("     -> Impossible de séparer nom et prénom (moins de 2 mots)")
-        #
 
         if fullmatch(NUM_TITULAIRE_PATTERN, word):
             data["numero_titulaire"] = word
@@ -208,6 +197,112 @@ def parse_cgr_verso_text(extracted_text):
     return data
 
 
+def parse_cni_recto_text(extracted_text: list[str]) -> dict[str, Optional[str]]:
+    """
+    Extrait du recto de la CNI sénégalaise :
+     - prenoms (MAJUSCULES)
+     - nom (MAJUSCULE)
+     - date_naissance (première date)
+     - lieu_naissance (token après le label 'lieu' ou 'lieu de naissance')
+     - date_expiration (3ᵉ date ou 2ᵉ si seulement délivrance+expiration)
+     - taille (valeur en cm)
+     - adresse_domicile (token après 'adresse')
+     - sexe (F ou M)
+    """
+    data: dict[str, Optional[str]] = {
+        "prenoms": None,
+        "nom": None,
+        "date_naissance": None,
+        "lieu_naissance": None,
+        "date_expiration": None,
+        "taille": None,
+        "adresse_domicile": None,
+        "sexe": None
+    }
+
+    dates: list[str] = []
+    for i, w in enumerate(extracted_text):
+        lw = w.lower()
+
+        # 1) Prénoms
+        if fuzzy_match(lw, "prenom", 67) and i + 1 < len(extracted_text):
+            data["prenoms"] = extracted_text[i + 1].upper()
+
+        # 2) Nom
+        if fuzzy_match(lw, "nom", 67) and i + 1 < len(extracted_text):
+            if not fuzzy_match(extracted_text[i + 1].lower(), "prenom", 70):
+                data["nom"] = extracted_text[i + 1].upper()
+
+        # 3) Dates
+        if fullmatch(DATE_PATTERN, w):
+            dates.append(w)
+
+        # 4) Adresse du domicile
+        if (fuzzy_match(lw, "adresse du domicile", 70) or
+            fuzzy_match(lw, "adresse", 65) or
+            fuzzy_match(lw, "domicile", 60)) and i + 1 < len(extracted_text):
+            data["adresse_domicile"] = extracted_text[i + 1]
+
+        # 5) Lieu de naissance
+        # Repère soit 'lieu', soit 'lieu de naissance'
+        if (fuzzy_match(lw, "lieu", 60) or fuzzy_match(lw, "lieu de naissance", 65)) \
+                and i + 1 < len(extracted_text):
+            data["lieu_naissance"] = extracted_text[i + 1].upper()
+
+        # 6) Taille
+        if "cm" in lw and data["taille"] is None:
+            data["taille"] = w
+            if data["lieu_naissance"] is None:
+                data["lieu_naissance"] = extracted_text[i + 1]
+
+        # 7) Sexe (juste “M” ou “F” comme token isolé)
+        if lw.strip().upper() in ("M", "F"):
+            data["sexe"] = lw.strip().upper()
+
+    # Affectation des dates clés
+    if dates:
+        data["date_naissance"] = dates[0]
+    if len(dates) >= 3:
+        data["date_expiration"] = dates[2]
+    elif len(dates) == 2:
+        data["date_expiration"] = dates[1]
+
+    return data
+
+
+def parse_cni_verso_text(extracted_text: list[str], gender: Optional[str] = None) -> dict[str, Optional[str]]:
+    """
+    Extrait le NIN (Numéro d'Identité Nationale) du verso de la CNI sénégalaise.
+    Si on passe `gender="M"` ou `"F"`, on ajoute le préfixe 1 (M) ou 2 (F) si absent.
+    """
+    data: dict[str, Optional[str]] = {"nin": None}
+
+    for i, token in enumerate(extracted_text):
+        if fuzzy_match(token, "nin", 70) and i + 1 < len(extracted_text):
+            raw = sub(r"\s+", "", extracted_text[i + 1])
+            # digits = "".join(filter(str.isdigit, raw))
+            digits = "".join([c for c in raw if c.isdigit()])
+
+            # ajoute le préfixe genre si nécessaire
+            if gender in ("M", "F"):
+                prefix = "1" if gender == "M" else "2"
+                if not digits.startswith(prefix):
+                    digits = prefix + digits
+
+            # formate en blocs : 1 052 1998 00612
+            if len(digits) >= 12:
+                b1 = digits[0]
+                b2 = digits[1:4]
+                b3 = digits[4:8]
+                b4 = digits[8:13]
+                data["nin"] = f"{b1} {b2} {b3} {b4}"
+            else:
+                data["nin"] = digits
+            break
+
+    return data
+
+
 def correct_immatriculation(candidate: str, threshold: int = 80) -> str | None:
     """
     Corrige une chaîne candidate d'immatriculation issue d'OCR, en appliquant des corrections
@@ -265,55 +360,6 @@ def correct_immatriculation(candidate: str, threshold: int = 80) -> str | None:
     return candidate
 
 
-# def correct_immatriculation(candidate: str, threshold: int = 80) -> str | None:
-#     pattern = compile(IMMATRICULATION_PATTERN)
-#     if pattern.match(candidate):
-#         return candidate  # Déjà valide
-#
-#     # Supprimer les séparateurs pour analyser la structure
-#     clean = sub(r'[\s\-]', '', candidate)
-#
-#     if not (5 <= len(clean) <= 9):
-#         return None  # Pas une immatriculation valable
-#
-#     corrected = list(clean)
-#     # Heuristique : structure = LLDDDL ou LLDDDLL, etc.
-#     # On considère :
-#     #   lettres : 0,1 ; chiffres : 2..(n-3) ; lettres : (n-3) à fin
-#     length = len(clean)
-#
-#     # Indices de type
-#     first_letters = [0, 1]
-#     middle_digits = list(range(2, length - 3)) if length > 5 else [2]
-#     last_letters = list(range(length - 3, length))
-#
-#     for i, ch in enumerate(corrected):
-#         if i in first_letters or i in last_letters:
-#             # Attendu : lettre
-#             if ch in AMBIGUOUS_MAP and AMBIGUOUS_MAP[ch].isalpha():
-#                 corrected[i] = AMBIGUOUS_MAP[ch]
-#         elif i in middle_digits:
-#             # Attendu : chiffre
-#             if ch in AMBIGUOUS_MAP and AMBIGUOUS_MAP[ch].isdigit():
-#                 corrected[i] = AMBIGUOUS_MAP[ch]
-#
-#     # Reformater avec des tirets (pour tester le pattern)
-#     tentative = '-'.join([
-#         ''.join(corrected[0:2]),
-#         ''.join(corrected[2:-3]),
-#         ''.join(corrected[-3:])
-#     ])
-#
-#     # Valider le pattern + fuzzy
-#     if pattern.match(tentative):
-#         score = ratio(candidate, tentative)
-#         if score >= threshold:
-#             return tentative
-#
-#     return candidate
-
-
-# Exemple d'utilisation
 if __name__ == '__main__':
     ocr_result = "A4-717-NS"  # OCR renvoie "A4-717-NS" au lieu de "AA-717-NS"
     corrected = correct_immatriculation(ocr_result)

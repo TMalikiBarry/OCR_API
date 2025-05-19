@@ -5,7 +5,9 @@ from flask import Flask, request, jsonify
 from utils.auth import (check_auth)
 from utils.ocr_parser import (
     parse_cgr_recto_text,
-    parse_cgr_verso_text
+    parse_cgr_verso_text,
+    parse_cni_recto_text,
+    parse_cni_verso_text,
 )
 # Importation des fonctions de nos modules utilitaires
 from utils.preprocessing import extract_text_with_ocr
@@ -165,6 +167,66 @@ def endpoint_extract_cgr():
     # Fusion des données
     merged_data = {**recto_data, **verso_data}
     return jsonify(merged_data)
+
+
+@app.route('/extract-cni-recto', methods=['POST'])
+def endpoint_extract_cni_recto():
+    """
+    Extrait les champs du recto de la CNI sénégalaise :
+     - prenoms, nom, date_naissance, lieu_naissance,
+       date_expiration, taille, adresse_domicile.
+    """
+    role, auth_error = check_auth()
+    if auth_error:
+        return auth_error
+
+    # if role != "mytouchpoint":
+    #     return jsonify({"error": "Accès refusé"}), 403
+
+    if 'image' not in request.files:
+        return jsonify({"error": "Aucune image fournie"}), 400
+
+    # 1) OCR
+    tolerance = request.args.get('tolerance', default=0.2, type=float)
+    extracted = extract_text_with_ocr(request.files['image'], reader, tolerance)
+
+    # 2) Parsing CNI
+    cni_data = parse_cni_recto_text(extracted)
+    return jsonify(cni_data)
+
+
+@app.route('/extract-cni', methods=['POST'])
+def endpoint_extract_cni_complet():
+    """
+    Reçoit deux images : recto + verso de la CNI.
+    Retourne un JSON unifié avec toutes les infos.
+    Accessible uniquement à mytouchpoint.
+    """
+    role, auth_error = check_auth()
+    if auth_error:
+        return auth_error
+
+    # if role != "mytouchpoint":
+    #     return jsonify({"error": "Accès refusé"}), 403
+
+    files = request.files
+    if 'image_recto' not in files or 'image_verso' not in files:
+        return jsonify({"error": "Deux images (recto, verso) doivent être fournies"}), 400
+
+    tol = request.args.get('tolerance', default=0.2, type=float)
+
+    # 1) OCR + parsing recto
+    ocr_recto = extract_text_with_ocr(files['image_recto'], reader, tol)
+    recto_data = parse_cni_recto_text(ocr_recto)
+
+    # 2) OCR + parsing verso
+    ocr_verso = extract_text_with_ocr(files['image_verso'], reader, tol)
+    # transmet le sexe déjà extrait (M ou F) pour préfixer le NIN
+    verso_data = parse_cni_verso_text(ocr_verso, gender=recto_data.get("sexe"))
+
+    # 3) fusion et réponse
+    merged = {**recto_data, **verso_data}
+    return jsonify(merged)
 
 
 ########################################################
